@@ -17,7 +17,6 @@ CARootURLs="https://letsencrypt.org/certs/isrgrootx1.pem.txt,https://dl.cacerts.
 
 
 
-
 function CertDetailsFromCmd(cmd)
 local details={}
 
@@ -40,7 +39,7 @@ Dir=filesys.GLOB(WorkingDir.."/*")
 item=Dir:next()
 while item ~= nil
 do
-if filesys.exists(item.."/ca.crt") ==true then table.insert(ca_list, item) end
+if filesys.exists(item.."/ca.crt") == true then table.insert(ca_list, item) end
 item=Dir:next()
 end
 
@@ -75,7 +74,7 @@ local S, str
 
 if g_Debug == true then print("CMD: "..cmd) end
 
-S=stream.STREAM("cmd:"..cmd, "pty errnull")
+S=stream.STREAM("cmd:"..cmd, "pty")
 S:timeout(3000)
 str=CmdRead(S)
 while str ~= nil
@@ -227,7 +226,8 @@ keypath=path .. details.name .. ".key"
 pfxpath=path .. details.name .. ".pfx"
 
 OpenSSLCommand("openssl genrsa -out ".. path .. details.name..".key 2048")
-str="openssl req -new -key ".. keypath .. " -out " .. csrpath .. " -subj \"/CN="..details.name.."\""
+str="openssl req -new -key ".. keypath .. " -out " .. csrpath .. " -subj \"" .. OpenSSLSubject(details) .."\""
+-- if strutil.strlen(details.alt_names) > 0 then str = str .. " -addext \"subjectAltName=" .. details.alt_names .. "\"" end
 OpenSSLCommand(str)
 
 str="openssl x509 -req -days " .. details.lifetime .. " -in ".. csrpath .. " -CA ca.crt -CAkey ca.key -CAserial serial -out " .. certpath
@@ -265,6 +265,14 @@ Out:puts("\n")
 
 if strutil.strlen(details.name) == 0 then print("\rYou must enter a name for the new item.~>") end
 end
+
+--[[
+if strutil.strlen(details.alt_names) == 0 
+then
+details.alt_names=Out:prompt("Alt. Names: ")
+Out:puts("\n")
+end
+]]--
 
 if strutil.strlen(details.org) == 0 
 then
@@ -327,7 +335,7 @@ return retval
 end
 
 
-function CreateCSR()
+function CreateCSR(cmd)
 local details
 
 details=CertDetailsFromCmd(cmd)
@@ -362,14 +370,34 @@ print(str)
 details.cert_authority=Out:prompt("CA to use: ")
 Out:puts("\n")
 
-if CheckGenerateFiles(WorkingDir .. details.cert_authority .. "/", {"ca.crt", "ca.key", "ca.pfx"} ) == false
+if strutil.strlen(details.cert_authority) > 0
 then
-	print("ERROR: No such certification authority '" .. details.cert_authority .. "'")
+	if CheckGenerateFiles(WorkingDir .. details.cert_authority .. "/", {"ca.crt", "ca.key", "ca.pfx"} ) == false
+	then
+		print("ERROR: No such certification authority '" .. details.cert_authority .. "'")
+		details.cert_authority=nil
+	end
+else
 	details.cert_authority=nil
 end
 
 end
 
+
+function CertDetailsFromCA(details)
+local ca_cert, path, certs, cert
+
+path=WorkingDir .. details.cert_authority .. "/ca.crt"
+certs=LoadCertificatesFromFile(path)
+cert=certs[1]
+
+if strutil.strlen(details.org) ==0 then details.org=cert.org end
+if strutil.strlen(details.location) ==0 then details.location=cert.location end
+if strutil.strlen(details.country) ==0 then details.country=cert.country end
+if strutil.strlen(details.email) ==0 then details.email=cert.email end
+
+return details
+end
 
 
 function CreateCertificate(cmd)
@@ -377,8 +405,11 @@ local details={}
 local ca_list, item, i, str
 
 details=CertDetailsFromCmd(cmd)
+
 while details.cert_authority == nil do ChooseCA(details) end
-if details.name == nil then details=UI_AskCertDetails(details) end
+if cmd.copy_ca_values==true then details=CertDetailsFromCA(details) end
+
+while strutil.strlen(details.name) == 0 do details=UI_AskCertDetails(details) end
 if details.lifetime==nil or details.lifetime==0 then details.lifetime=365 end
 
 OpenSSLCreateCertificate(details)
@@ -420,6 +451,7 @@ end
 
 end
 
+
 -- Given a subject, which might contain '/emailAddress=' and other cruft,
 -- clean it up to get a name
 function CertificateSubjectToName(subject)
@@ -433,6 +465,7 @@ if string.sub(str, 1, 5)=="http:"  then str=string.sub(str, 6) end
 if string.sub(str, 1, 6)=="https:" then str=string.sub(str, 7) end
 return str
 end
+
 
 
 function ReformatDate(indate)
@@ -470,8 +503,11 @@ local ident={}
 
 ident.name=""
 ident.country=""
+ident.alt_names=""
 ident.org=""
 ident.unit=""
+ident.location=""
+ident.email=""
 
 toks=strutil.TOKENIZER(input, ", ")
 tok=toks:next()
@@ -486,9 +522,15 @@ do
 	elseif string.sub(tok, 1, 2) == "O="
 	then
 		ident.org=string.sub(tok, 3)
-	elseif string.sub(tok, 1, 2) == "OU="
+	elseif string.sub(tok, 1, 3) == "OU="
 	then
 		ident.unit=string.sub(tok, 4)
+	elseif string.sub(tok, 1, 2) == "L="
+	then
+		ident.location=string.sub(tok, 3)
+	elseif string.sub(tok, 1, 13) == "emailAddress="
+	then
+		ident.email=string.sub(tok, 14)
 	end
 tok=toks:next()
 end
@@ -506,6 +548,8 @@ cert.issuer=ident.name
 cert.issuer_country=ident.country
 cert.issuer_org=ident.org
 cert.issuer_unit=ident.unit
+cert.issuer_location=ident.location
+cert.issuer_email=ident.email
 
 if strutil.strlen(cert.issuer)==0 then cert.issuer=ident.org end
 
@@ -519,9 +563,11 @@ local ident
 
 ident=ParseIdent(input)
 cert.subject=ident.name
+cert.location=ident.location
 cert.country=ident.country
 cert.org=ident.org
 cert.unit=ident.unit
+cert.email=ident.email
 
 if strutil.strlen(cert.subject)==0 then cert.subject=ident.unit end
 if strutil.strlen(cert.subject)==0 then cert.subject=ident.org end
@@ -725,7 +771,7 @@ end
 
 
 function BundleAddCerts(S, certs)
-local i, cert
+local i, cert, name
 
 for i,cert in ipairs(certs)
 do
@@ -769,7 +815,7 @@ local certs, cert, i, str
 certs=LoadCertificatesFromFile(path)
 for i,cert in ipairs(certs)
 do
-	str=CertificateSubjectToName(cert.subject)
+        str=CertificateSubjectToName(cert.subject)
 	if strutil.strlen(str) ==0 then str=tostring(i) end
 	str=str..".pem"
 	S=stream.STREAM(str, "w")
@@ -878,6 +924,7 @@ print(" -country <2-letter code>    2-letter country code")
 print(" -cc <2-letter code>         2-letter country code")
 print(" -email <address>            contact email address")
 print(" -ca <C.A. name>             name of certificate authority to use")
+print(" -copy                       copy details from certificate of signing C.A.")
 print()
 print("Examples:")
 print()
@@ -918,6 +965,7 @@ Cmd.path=""
 Cmd.outpath="-"
 Cmd.mail_errors_to=""
 Cmd.warn_time=665 * 24 * 3600
+Cmd.copy_ca_values=false
 
 for i,item in ipairs(arg)
 do
@@ -966,6 +1014,9 @@ then
 	then
 	Cmd.cert_authority=arg[i+1]
 	arg[i+1]=""
+	elseif item=="-copy"
+	then
+	Cmd.copy_ca_values=true
 	elseif item=="-debug"
 	then
 	g_Debug=true
@@ -998,7 +1049,8 @@ end
 
 
 
-WorkingDir=process.getenv("HOME").."/.cert_mgr/"
+WorkingDir=process.getenv("HOME").."/.certtool/"
+filesys.mkdir(WorkingDir)
 Out=terminal.TERM()
 
 --process.lu_set("SSL:VerifyCertFile", "test.pem")
@@ -1025,10 +1077,10 @@ then
 CreateKey(Cmd.path)
 elseif Cmd.action=="csr"
 then
-CreateCSR()
+CreateCSR(Cmd)
 elseif Cmd.action=="ca"
 then
-CreateCA()
+CreateCA(Cmd)
 elseif Cmd.action=="cert"
 then
 CreateCertificate(Cmd)
