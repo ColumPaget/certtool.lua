@@ -420,6 +420,20 @@ end
 
 end
 
+-- Given a subject, which might contain '/emailAddress=' and other cruft,
+-- clean it up to get a name
+function CertificateSubjectToName(subject)
+local toks, str
+
+toks=strutil.TOKENIZER(subject, "/emailAddress")
+str=toks:next()
+str=string.gsub(str, '/', '_')
+
+if string.sub(str, 1, 5)=="http:"  then str=string.sub(str, 6) end
+if string.sub(str, 1, 6)=="https:" then str=string.sub(str, 7) end
+return str
+end
+
 
 function ReformatDate(indate)
 local outdate, i, str
@@ -712,9 +726,11 @@ end
 
 function BundleAddCerts(S, certs)
 local i, cert
+
 for i,cert in ipairs(certs)
 do
-	S:writeln("## " .. cert.start_date .."-"..cert.end_date.. "  "..cert.subject.." ("..cert.org.." - "..cert.country..")".."\n") 
+	name=CertificateSubjectToName(cert.subject)
+	S:writeln("## " .. cert.start_date .. "-" .. cert.end_date .. "  " .. name .. " (".. cert.org .. " - " .. cert.country .. ")" .. "\n") 
 	S:writeln(cert.pem.."\n")
 end
 end
@@ -753,7 +769,7 @@ local certs, cert, i, str
 certs=LoadCertificatesFromFile(path)
 for i,cert in ipairs(certs)
 do
-	str=cert.subject
+	str=CertificateSubjectToName(cert.subject)
 	if strutil.strlen(str) ==0 then str=tostring(i) end
 	str=str..".pem"
 	S=stream.STREAM(str, "w")
