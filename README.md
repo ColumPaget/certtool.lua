@@ -10,6 +10,7 @@ USAGE
 ```
 certtool.lua [action] [args]
 
+certtool.lua list <path>                                     - list certificates in file at <path>
 certtool.lua show <path>                                     - show details of certificates in file at <path>
 certtool.lua bundle <path 1> ... <path n> -out <outpath>     - bundle certificates listed into a single filei at 'outpath'
 certtool.lua unbundle <path>                                 - unbundle certificates out of a single file into a file per certificate

@@ -7,7 +7,7 @@ require("time")
 
 
 
-
+Version="1.0"
 KeyStore={}
 ExitStatus=0
 g_Debug=false
@@ -721,7 +721,12 @@ function ListCertificatesFromFile(path)
 local certs
 
 certs=LoadCertificatesFromFile(path)
+if certs == nil or #certs == 0
+then
+print("ERROR: no certificates loaded");
+else
 DisplayCertificateList(certs)
+end
 
 end
 
@@ -730,21 +735,24 @@ function ShowCertificatesFromFile(path)
 local certs, cert, i, S
 
 certs=LoadCertificatesFromFile(path)
-S=stream.STREAM("cmd:openssl x509 -text 2>/dev/null", "")
-if S ~= nil
-then
 for i,cert in ipairs(certs)
 do
-	S:writeln(cert.pem)
-	str=S:readln()
-	while str ~= nil
-	do
-	str=strutil.trim(str)
-	print(str)
-	str=S:readln()
+	S=stream.STREAM("cmd:openssl x509 -text 2>/dev/null", "")
+	if S ~= nil
+	then
+		S:writeln(cert.pem)
+		Out:puts("~eCERTIFICATE " .. tostring(i) .. "   " .. cert.subject .. "~0\n")
+		str=S:readln()
+		while str ~= nil
+		do
+			str=strutil.trim(str)
+			print(str)
+			str=S:readln()
+		end
 	end
-end
-S:close()
+	print("")
+	print("")
+	S:close()
 end
 
 end
@@ -900,6 +908,7 @@ end
 function DrawHelp()
 print("certtool.lua [action] [args]")
 print()
+print("certtool.lua list <path>                                     - list certificates in file at <path>")
 print("certtool.lua show <path>                                     - show details of certificates in file at <path>")
 print("certtool.lua bundle <path 1> ... <path n> -out <outpath>     - bundle certificates listed into a single filei at 'outpath'")
 print("certtool.lua unbundle <path>                                 - unbundle certificates out of a single file into a file per certificate")
@@ -1020,9 +1029,6 @@ then
 	elseif item=="-debug"
 	then
 	g_Debug=true
-	elseif item=="-help" or item=="--help" or item=="-?"
-	then
-	Cmd.action="help"
 	elseif strutil.strlen(Cmd.path) > 0 then Cmd.path=Cmd.path..","..item
 	else
 	Cmd.path=item
@@ -1031,6 +1037,14 @@ end
 
 end
 
+
+if Cmd.action=="-version" or Cmd.action=="--version" or Cmd.action=="-v"
+then
+	Cmd.action="version"
+elseif Cmd.action=="-help" or Cmd.action=="--help" or Cmd.action=="-?"
+then
+	Cmd.action="help"
+end
 
 
 if Cmd.action=="pem2pfx" or Cmd.action=="pfx2pem"
@@ -1056,6 +1070,7 @@ Out=terminal.TERM()
 --process.lu_set("SSL:VerifyCertFile", "test.pem")
 
 Cmd=ParseCommandLine()
+
 if Cmd.action=="list"
 then
 ProcessCertificatesFromFiles("list", Cmd.path)
@@ -1090,6 +1105,9 @@ OpenSSLPEMtoPKCS12(Cmd.outpath, Cmd.certpath, Cmd.keypath)
 elseif Cmd.action=="pfx2pem"
 then
 OpenSSLPKCS12toPEM(Cmd.path, Cmd.certpath, Cmd.keypath)
+elseif Cmd.action=="version"
+then
+print("certtool.lua version "..Version)
 else
 DrawHelp()
 end
