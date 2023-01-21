@@ -16,10 +16,37 @@ CARootCerts={}
 CARootURLs="https://letsencrypt.org/certs/isrgrootx1.pem.txt,https://dl.cacerts.digicert.com/BaltimoreCyberTrustRoot.crt.pem,https://dl.cacerts.digicert.com/CybertrustGlobalRoot.crt.pem,DigiCert Assured ID,https://dl.cacerts.digicert.com/DigiCertAssuredIDRootCA.crt.pem,DigiCert Assured ID G2,https://dl.cacerts.digicert.com/DigiCertAssuredIDRootG2.crt.pem,DigiCert Assured ID G3,https://dl.cacerts.digicert.com/DigiCertAssuredIDRootG3.crt.pem,DigiCert Federated ID,https://dl.cacerts.digicert.com/DigiCertFederatedIDRootCA.crt.pem,DigiCert Global,https://dl.cacerts.digicert.com/DigiCertGlobalRootCA.crt.pem,DigiCert Global G2,https://dl.cacerts.digicert.com/DigiCertGlobalRootG2.crt.pem,DigiCert Global G3,https://dl.cacerts.digicert.com/DigiCertGlobalRootG3.crt.pem,DigiCert High Assurance EV,https://dl.cacerts.digicert.com/DigiCertHighAssuranceEVRootCA.crt.pem,DigiCert Trusted G4,https://dl.cacerts.digicert.com/DigiCertTrustedRootG4.crt.pem,GTE Cybetrust Global,https://dl.cacerts.digicert.com/GTECyberTrustGlobalRoot.crt.pem,Verizon Global,https://dl.cacerts.digicert.com/VerizonGlobalRootCA.crt.pem,https://www.geotrust.com/resources/root_certificates/certificates/GeoTrust_Primary_CA.pem,https://www.geotrust.com/resources/root_certificates/certificates/GeoTrust_Primary_CA_G2_ECC.pem,GeoTrust Primary G3,https://www.geotrust.com/resources/root_certificates/certificates/GeoTrust_Primary_CA_G4_DSA.pem,GeoTrust Primary G4,https://www.geotrust.com/resources/root_certificates/certificates/GeoTrust_Primary_CA_G4_DSA.pem,GeoTrust Universal,https://www.geotrust.com/resources/root_certificates/certificates/GeoTrust_Universal_CA.pem,GeoTrust Universal,https://www.geotrust.com/resources/root_certificates/certificates/GeoTrust_Universal_CA.pem,GeoTrust Universal 2,https://www.geotrust.com/resources/root_certificates/certificates/GeoTrust_Universal_CA2.pem,GeoTrust Global,https://www.geotrust.com/resources/root_certificates/certificates/GeoTrust_Universal_CA2.pem,GeoTrust Global 2,https://www.geotrust.com/resources/root_certificates/certificates/GeoTrust_Global_CA2.pem"
 
 
-
-function CertDetailsFromCmd(cmd)
+function CertDetailsCreate()
 local details={}
 
+details.pem=""
+details.subject=""
+details.name=""
+details.alt_names=""
+details.org=""
+details.country=""
+details.location=""
+details.email=""
+details.issuer=""
+details.issuer_org=""
+details.issuer_country=""
+details.start_date=""
+details.end_date=""
+details.start_time=""
+details.end_time=""
+details.lifetime=""
+
+
+return details
+end
+
+
+
+
+function CertDetailsFromCmd(cmd)
+local details
+
+details=CertDetailsCreate()
 details.name=cmd.path
 details.cert_authority=cmd.cert_authority
 details.org=cmd.org
@@ -31,286 +58,13 @@ return details
 end
 
 
-function GetCAList()
-local Dir, item
-local ca_list={}
+function OpenSSLInit()
+local openssl={}
 
-Dir=filesys.GLOB(WorkingDir.."/*")
-item=Dir:next()
-while item ~= nil
-do
-if filesys.exists(item.."/ca.crt") == true then table.insert(ca_list, item) end
-item=Dir:next()
-end
 
-return(ca_list)
-end
-
-
-
-function CmdRead(S)
-local str=""
-local inchar
-
-inchar=S:getch()
-while inchar ~= '\n' and inchar ~= ':'
-do
-	if string.byte(inchar) == 255 and strutil.strlen(str)==0 then return nil end
-
-	str=str..inchar
-	inchar=S:getch()
-end
-
-if str==nil then Out:puts("EXIT! str==nil\n") end
-Out:flush()
-
-return str
-end
-
-
-
-function OpenSSLCommand(cmd)
-local S, str
-
-if g_Debug == true then print("CMD: "..cmd) end
-
-S=stream.STREAM("cmd:"..cmd, "pty")
-S:timeout(3000)
-str=CmdRead(S)
-while str ~= nil
-do
-	str=strutil.trim(str)
-
-	if strutil.strlen(str) > 0
-	then
-		if g_Debug==true then Out:puts(str.."\n") end
-
-		if string.find(str, "Enter pass phrase") ~= nil
-		then
-		if KeyStore.ca_key == nil then KeyStore.ca_key=UI_AskPassphrase("Enter password for Certificate Authority: ") end 
-		S:writeln(KeyStore.ca_key.."\n")
-		S:flush()
-		end
-
-		if string.find(str, "Enter Import Password") ~= nil
-		then
-		if KeyStore.cert_key == nil then KeyStore.cert_key=UI_AskPassphrase("Enter password for source certificate: ") end 
-		S:writeln(KeyStore.cert_key.."\n")
-		S:flush()
-		end
-
-		if string.find(str, "Enter Export Password") ~= nil
-		then
-		if KeyStore.cert_key == nil then KeyStore.cert_key=UI_AskPassphrase("Enter password for new certificate (blank for no passphrase): ") end 
-		S:writeln(KeyStore.cert_key.."\n")
-		S:flush()
-		end
-
-	end
-
-	Out:flush()
-	str=CmdRead(S)
-end
-
-S:close()
-end
-
-
-
-function OpenSSLSubject(details)
-local str=""
-
---if email exists, then it must be added first because of some kind of bug in openssl
-if strutil.strlen(details.email) > 0 then str=str.."/emailAddress="..details.email end
---name must ALWAYS exist
-str=str.."/CN="..details.name
-if strutil.strlen(details.country) > 0 then str=str.."/C="..details.country end
-if strutil.strlen(details.org) > 0 then str=str.."/O="..details.org end
-if strutil.strlen(details.location) > 0 then str=str.."/L="..details.location end
-
-return str
-end
-
-
-function OpenSSLCreateRSAKey()
-OpenSSLCommand("openssl genrsa -des3 -out ca.key 2048")
-end
-
-
-function OpenSSLCreateCSR(details)
-local subj
-
-subj=OpenSSLSubject(details)
-OpenSSLCommand("openssl req -new -newkey rsa:2048 -nodes -subj '" .. subj .. "' -keyout " .. details.name .. ".key -out " .. details.name .. ".csr")
-end
-
-
-function OpenSSLPEMtoPKCS12(outpath, certpath, keypath)
-if strutil.strlen(certpath) == 0
-then 
-print("ERROR: no path given to certificate to import")
-elseif strutil.strlen(keypath) == 0
-then
-print("ERROR: no path given to keyfile to import")
-else
-OpenSSLCommand("openssl pkcs12 -export -out " .. outpath .. " -inkey " .. keypath .. " -in ".. certpath)
-end
-end
-
-
-function OpenSSLPKCS12toPEM(inpath, certpath, keypath)
-local str
-
-str=filesys.basename(inpath)
-if strutil.strlen(certpath) == 0 then certpath=str..".crt" end
-if strutil.strlen(keypath) == 0 then keypath=str..".key"   end
-
-OpenSSLCommand("openssl pkcs12 -nodes -in " .. inpath .. " -out " .. certpath)
-OpenSSLCommand("openssl pkcs12 -nodes -nocerts -in " .. inpath .. " -out " .. keypath)
-if CheckGenerateFiles(".", {certpath, keypath}, true) == false then ExitStatus=1 end
-end
-
-
-
-function OpenSSLCreateCA(details)
-local str, S
-
-if strutil.strlen(details.name) == 0
-then
-print("ERROR: No name provided for CA.");
-return
-end
-
-str=WorkingDir .. details.name .. "/"
-filesys.mkdirPath(str)
-process.chdir(str)
-
---initialize serial number (incremented at each operation) to 01
-S=stream.STREAM("serial","w")
-S:writeln("01\n")
-S:close()
-
---just generate this file
-S=stream.STREAM("index.txt","w")
-S:close()
-
-OpenSSLCommand("openssl genrsa -des3 -out ca.key 2048")
-str=OpenSSLSubject(details)
-OpenSSLCommand("openssl req -new -x509 -days 3650 -key ca.key -subj \""..str.."\" -out ca.crt")
-
-
-if CheckGenerateFiles(WorkingDir .. details.name .. "/", {"ca.crt", "ca.key"}, true ) == false then ExitStatus=1 end
-end
-
-
-
-function OpenSSLCreateCertificate(details)
-local str, path
-local csrpath, certpath, keypath, pfxpath
-
-if strutil.strlen(details.name) == 0
-then
-print("ERROR: No name provided for Certificate. You must provide at least a 'common name' for certificate creation.");
-return
-end
-
-
-path=WorkingDir .. details.cert_authority
-process.chdir(path)
-
-path=WorkingDir .. details.name .. "/"
-filesys.mkdirPath(path)
-csrpath=path .. details.name .. ".csr"
-certpath=path .. details.name .. ".crt"
-keypath=path .. details.name .. ".key"
-pfxpath=path .. details.name .. ".pfx"
-
-OpenSSLCommand("openssl genrsa -out ".. path .. details.name..".key 2048")
-str="openssl req -new -key ".. keypath .. " -out " .. csrpath .. " -subj \"" .. OpenSSLSubject(details) .."\""
--- if strutil.strlen(details.alt_names) > 0 then str = str .. " -addext \"subjectAltName=" .. details.alt_names .. "\"" end
-OpenSSLCommand(str)
-
-str="openssl x509 -req -days " .. details.lifetime .. " -in ".. csrpath .. " -CA ca.crt -CAkey ca.key -CAserial serial -out " .. certpath
-OpenSSLCommand(str)
-
---str="openssl rsa -in ".. path .. details.name .. ".key -out ".. path .. details.name .. ".key.insecure"
---OpenSSLCommand(str)
-
-OpenSSLPEMtoPKCS12(pfxpath, certpath , keypath)
-
-if CheckGenerateFiles(WorkingDir .. "/" .. details.name, { details.name..".crt", details.name..".key"}, true) == false then ExitStatus=1 end
-end
-
-
-
-function UI_AskPassphrase(Prompt)
-local str
-
-str=Out:prompt(Prompt, "hidetext")
-print("\n")
-
-return str
-end
-
-
-
-function UI_AskCertDetails(details)
-
-if details == nil then details={} end
-
-while strutil.strlen(details.name) == 0 
-do
-details.name=Out:prompt("Name: ")
-Out:puts("\n")
-
-if strutil.strlen(details.name) == 0 then print("\rYou must enter a name for the new item.~>") end
-end
-
---[[
-if strutil.strlen(details.alt_names) == 0 
-then
-details.alt_names=Out:prompt("Alt. Names: ")
-Out:puts("\n")
-end
-]]--
-
-if strutil.strlen(details.org) == 0 
-then
-details.org=Out:prompt("Organization: ")
-Out:puts("\n")
-end
-
-if strutil.strlen(details.country) == 0 
-then
-details.country=Out:prompt("Country: ")
-Out:puts("\n")
-end
-
-if strutil.strlen(details.location) == 0 
-then
-details.location=Out:prompt("Location: ")
-Out:puts("\n")
-end
-
-if strutil.strlen(details.email) == 0 
-then
-details.email=Out:prompt("Email: ")
-Out:puts("\n")
-end
-
-if strutil.strlen(details.lifetime) == 0 
-then
-details.lifetime=Out:prompt("Lifetime (days): ")
-Out:puts("\n")
-end
-
-
-return details
-end
-
-
-
-function CheckGenerateFiles(dir, files, output_result)
+-- this function checks that the expected .crt and .key files (certificate and public key)
+-- exist as expected after an openssl command is run
+openssl.check_files=function(self, dir, files, output_result)
 local path, i, item, str
 local retval=false
 
@@ -335,122 +89,231 @@ return retval
 end
 
 
-function CreateCSR(cmd)
-local details
+--this function reads output from openssl. Most of the important output, like
+--requests for a password, end with ':'
+openssl.cmdread=function(self, S)
+local str=""
+local inchar
 
-details=CertDetailsFromCmd(cmd)
-details=UI_AskCertDetails(details)
-OpenSSLCreateCSR(details)
+inchar=S:getch()
+while inchar ~= '\n' and inchar ~= ':'
+do
+	if string.byte(inchar) == 255 and strutil.strlen(str)==0 then return nil end
 
+	str=str..inchar
+	inchar=S:getch()
 end
 
-
-function CreateCA(cmd)
-local details
-
-details=CertDetailsFromCmd(cmd)
-details=UI_AskCertDetails(details)
--- details.passphrase=Out:prompt("Security Passphrase: ")
-Out:puts("\n")
+if str==nil then Out:puts("EXIT! str==nil\n") end
 Out:flush()
 
-OpenSSLCreateCA(details)
+return str
 end
 
 
-function ChooseCA(details)
+--this actually runs an openssl command, and handles any output from it
+openssl.command=function(self, cmd)
+local S, str
 
-str="Select CA From: "
-for i,item in ipairs(GetCAList())
+if g_Debug == true then print("CMD: "..cmd) end
+
+S=stream.STREAM("cmd:"..cmd, "pty")
+S:timeout(3000)
+str=self:cmdread(S)
+while str ~= nil
 do
-str=str..filesys.basename(item).." "
+	str=strutil.trim(str)
+
+	if strutil.strlen(str) > 0
+	then
+		if g_Debug==true then Out:puts("["..str.."]\n") end
+
+		if string.find(str, "Enter pass phrase") ~= nil
+		then
+		if KeyStore.ca_key == nil then KeyStore.ca_key=ui:askPassphrase("Enter password for Certificate Authority: ") end 
+		S:writeln(KeyStore.ca_key.."\n")
+		S:flush()
+		end
+
+		if string.find(str, "Enter Import Password") ~= nil
+		then
+		if KeyStore.cert_key == nil then KeyStore.cert_key=ui:askPassphrase("Enter password for source certificate: ") end 
+		S:writeln(KeyStore.cert_key.."\n")
+		S:flush()
+		end
+
+		if string.find(str, "Enter Export Password") ~= nil
+		then
+		if KeyStore.cert_key == nil then KeyStore.cert_key=ui:askPassphrase("Enter password for new certificate (blank for no passphrase): ") end 
+		S:writeln(KeyStore.cert_key.."\n")
+		S:flush()
+		end
+
+		if string.find(str, "problems making Certificate Request") ~= nil
+		then
+		Out:puts(str.."\n")
+		end
+
+		if str == "bad number of days"
+		then
+		str=S:readln()
+		Out:puts("~e~rERROR: bad lifetime/number of days: "..str.."~0\n")
+		end
+
+		if str == "error"
+		then 
+		str=S:readln()
+		Out:puts("~e~rERROR:"..str.."~0\n")
+		end
+
+	end
+
+	Out:flush()
+	str=self:cmdread(S)
 end
 
-print(str)
-details.cert_authority=Out:prompt("CA to use: ")
-Out:puts("\n")
+S:close()
+end
 
-if strutil.strlen(details.cert_authority) > 0
+
+--make a 'subject' string, which is a string passed to openssl that
+--contains all the details (common name, email Address, country, organization)
+--that make up a certificate
+openssl.mkSubject=function(self, details)
+local str=""
+
+--if email exists, then it must be added first because of some kind of bug in openssl
+if strutil.strlen(details.email) > 0 then str=str.."/emailAddress="..details.email end
+--name must ALWAYS exist
+str=str.."/CN="..details.name
+if strutil.strlen(details.country) > 0 then str=str.."/C="..details.country end
+if strutil.strlen(details.org) > 0 then str=str.."/O="..details.org end
+if strutil.strlen(details.location) > 0 then str=str.."/L="..details.location end
+
+return str
+end
+
+
+--generate an RSAkey file (usually used for CAs)
+openssl.mkRSAkey=function(self, path)
+self:command("openssl genrsa -des3 -out '" .. path .. "' 2048")
+end
+
+
+--make a certificate signing request for certificate named in 'details.name'
+openssl.mkCSR=function(self, details)
+local subj, csrfile
+
+csrfile=details.name .. ".csr"
+subj=self:mkSubject(details)
+self:command("openssl req -new -newkey rsa:2048 -nodes -subj '" .. subj .. "' -keyout " .. details.name .. ".key -out " .. csrfile)
+
+return self:check_files(".", {csrfile}, true)
+end
+
+
+-- export certficates from a PEM file into a PKCS12 format file
+openssl.PEMtoPKCS12=function(self, outpath, certpath, keypath)
+if strutil.strlen(certpath) == 0
+then 
+print("ERROR: no path given to certificate to import")
+elseif strutil.strlen(keypath) == 0
 then
-	if CheckGenerateFiles(WorkingDir .. details.cert_authority .. "/", {"ca.crt", "ca.key", "ca.pfx"} ) == false
-	then
-		print("ERROR: No such certification authority '" .. details.cert_authority .. "'")
-		details.cert_authority=nil
-	end
+print("ERROR: no path given to keyfile to import")
 else
-	details.cert_authority=nil
+self:command("openssl pkcs12 -export -out " .. outpath .. " -inkey " .. keypath .. " -in ".. certpath)
 end
-
-end
-
-
-function CertDetailsFromCA(details)
-local ca_cert, path, certs, cert
-
-path=WorkingDir .. details.cert_authority .. "/ca.crt"
-certs=LoadCertificatesFromFile(path)
-cert=certs[1]
-
-if strutil.strlen(details.org) ==0 then details.org=cert.org end
-if strutil.strlen(details.location) ==0 then details.location=cert.location end
-if strutil.strlen(details.country) ==0 then details.country=cert.country end
-if strutil.strlen(details.email) ==0 then details.email=cert.email end
-
-return details
 end
 
 
-function CreateCertificate(cmd)
-local details={}
-local ca_list, item, i, str
+-- export certficates from a PKCS12 format to a PEM format file
+openssl.PKCS12toPEM=function(self, inpath, certpath, keypath)
+local str
 
-details=CertDetailsFromCmd(cmd)
+str=filesys.basename(inpath)
+if strutil.strlen(certpath) == 0 then certpath=str..".crt" end
+if strutil.strlen(keypath) == 0 then keypath=str..".key"   end
 
-while details.cert_authority == nil do ChooseCA(details) end
-if cmd.copy_ca_values==true then details=CertDetailsFromCA(details) end
-
-while strutil.strlen(details.name) == 0 do details=UI_AskCertDetails(details) end
-if details.lifetime==nil or details.lifetime==0 then details.lifetime=365 end
-
-OpenSSLCreateCertificate(details)
-
+self:command("openssl pkcs12 -nodes -in " .. inpath .. " -out " .. certpath)
+self:command("openssl pkcs12 -nodes -nocerts -in " .. inpath .. " -out " .. keypath)
+return self:check_files(".", {certpath, keypath}, true)
 end
 
 
+-- make a CA on disk from 'details'
+openssl.mkCA=function(self, details)
+local str, S
 
-function CertAuthorityMenu()
-local Menu, choice
-
-Out:clear()
-Menu=terminal.TERMMENU(Out, 1, 1, Out:width() - 2, Out:length() - 2)
-Menu:add("Create New CA", "new")
-
-dirs=filesys.GLOB(WorkingDir.."*")
-item=dirs:next()
-while item ~= nil
-do
-	if filesys.exists(item.."/serial")
-	then
-		Menu:add(filesys.basename(item), item)
-	end
-item=dirs:next()
-end
-
-
-choice=Menu:run()
-
-if strutil.strlen(choice) > 0
+if strutil.strlen(details.name) == 0
 then
-	if choice=="new"
-	then
-	CreateNewCA()
-	else
-	CreateCertificate(choice)
-	end
+	print("ERROR: No name provided for CA.");
+	return
 end
 
+str=WorkingDir .. details.name .. "/"
+filesys.mkdirPath(str)
+process.chdir(str)
+
+--initialize serial number (incremented at each operation) to 01
+S=stream.STREAM("serial","w")
+S:writeln("01\n")
+S:close()
+
+--just generate this file
+S=stream.STREAM("index.txt","w")
+S:close()
+
+self:command("openssl genrsa -des3 -out ca.key 2048")
+str=self:mkSubject(details)
+self:command("openssl req -new -x509 -days 3650 -key ca.key -subj \""..str.."\" -out ca.crt")
+
+
+return self:check_files(WorkingDir .. details.name .. "/", {"ca.crt", "ca.key"}, true )
 end
 
+
+-- make a certificate
+openssl.mkCertificate=function(self, details)
+local str, path
+local csrpath, certpath, keypath, pfxpath
+
+if strutil.strlen(details.name) == 0
+then
+	print("ERROR: No name provided for Certificate. You must provide at least a 'common name' for certificate creation.");
+	return
+end
+
+
+path=WorkingDir .. details.cert_authority
+process.chdir(path)
+
+path=WorkingDir .. details.name .. "/"
+filesys.mkdirPath(path)
+csrpath=path .. details.name .. ".csr"
+certpath=path .. details.name .. ".crt"
+keypath=path .. details.name .. ".key"
+pfxpath=path .. details.name .. ".pfx"
+
+self:command("openssl genrsa -out ".. path .. details.name..".key 2048")
+str="openssl req -new -key ".. keypath .. " -out " .. csrpath .. " -subj \"" .. self:mkSubject(details) .."\""
+-- if strutil.strlen(details.alt_names) > 0 then str = str .. " -addext \"subjectAltName=" .. details.alt_names .. "\"" end
+self:command(str)
+
+str="openssl x509 -req -days " .. details.lifetime .. " -in ".. csrpath .. " -CA ca.crt -CAkey ca.key -CAserial serial -out " .. certpath
+self:command(str)
+
+--str="openssl rsa -in ".. path .. details.name .. ".key -out ".. path .. details.name .. ".key.insecure"
+--self:command(str)
+
+self:PEMtoPKCS12(pfxpath, certpath , keypath)
+
+return self:check_files(WorkingDir .. "/" .. details.name, { details.name..".crt", details.name..".key"}, true) 
+end
+
+
+
+return openssl
+end
 
 -- Given a subject, which might contain '/emailAddress=' and other cruft,
 -- clean it up to get a name
@@ -574,26 +437,9 @@ if strutil.strlen(cert.subject)==0 then cert.subject=ident.org end
 end
 
 
+function DecodePEMContents(cert, S)
+local str
 
-function ExaminePEMCertificate(pem)
-local S, str
-local cert={}
-
-cert.pem=pem
-cert.subject=""
-cert.org=""
-cert.country=""
-cert.issuer=""
-cert.issuer_org=""
-cert.issuer_country=""
-cert.start_date=""
-cert.end_date=""
-cert.start_time=""
-cert.end_time=""
-
-S=stream.STREAM("cmd:openssl x509 -text 2>/dev/null", "")
-if S ~= nil
-then
 	S:writeln(cert.pem.."\n")
 	str=S:readln()
 
@@ -621,12 +467,22 @@ then
 
 		str=S:readln()
 	end
+
 end
 
+
+function ExaminePEMCertificate(pem)
+local S, str
+local cert={}
+
+cert=CertDetailsCreate()
+cert.pem=pem
+
+S=stream.STREAM("cmd:openssl x509 -text 2>/dev/null", "")
+if S ~= nil then DecodePEMContents(cert, S) end
 
 return cert
 end
-
 
 
 function LoadCertificatesFromStream(S)
@@ -643,6 +499,9 @@ do
 	then
 	if str=="-----BEGIN CERTIFICATE-----" 
 	then 
+	pem=str.."\n"
+	elseif str=="-----BEGIN_CERTIFICATE REQUEST-----"
+	then
 	pem=str.."\n"
 	elseif str=="-----END CERTIFICATE-----" 
 	then
@@ -678,106 +537,9 @@ return certs
 end
 
 
-function DisplayCertificateList(certs)
-local cert, i, now, diff
-local end_date_color=""
+--this module provides functions that bundle or unbundle multiple certs together into a pem file
 
-now=time.format("%Y/%m/%d")
-
-for i,cert in ipairs(certs)
-do
-end_date_color=""
-
-if cert.end_date < now 
-then 
-end_date_color="~r" 
-else
-end_date_color="~g"
-end
-
-Out:puts(cert.start_date .. "-" .. end_date_color .. cert.end_date .. "~0 ~e" .. cert.subject .. "~0 issuer=[" .. cert.issuer .. "/".. cert.issuer_org.."/"..cert.issuer_country.."]\n")
-end
-end
-
-
-function GetDuration(secs)
-local day, hour, str
-
-hour=3600
-day=hour * 24
-
-if secs > day then str=string.format("%0.2f", secs / day) .. " days"
-elseif secs > hour then str=string.format("%0.2f", secs / hour) .. " hours"
-else str=string.format("%0.2f", secs) .. " seconds" 
-end
-
-return str
-end
-
-
-
-
-function ListCertificatesFromFile(path)
-local certs
-
-certs=LoadCertificatesFromFile(path)
-if certs == nil or #certs == 0
-then
-print("ERROR: no certificates loaded");
-else
-DisplayCertificateList(certs)
-end
-
-end
-
-
-function ShowCertificatesFromFile(path)
-local certs, cert, i, S
-
-certs=LoadCertificatesFromFile(path)
-for i,cert in ipairs(certs)
-do
-	S=stream.STREAM("cmd:openssl x509 -text 2>/dev/null", "")
-	if S ~= nil
-	then
-		S:writeln(cert.pem)
-		Out:puts("~eCERTIFICATE " .. tostring(i) .. "   " .. cert.subject .. "~0\n")
-		str=S:readln()
-		while str ~= nil
-		do
-			str=strutil.trim(str)
-			print(str)
-			str=S:readln()
-		end
-	end
-	print("")
-	print("")
-	S:close()
-end
-
-end
-
-
-function ProcessCertificatesFromFiles(action, path)
-local toks, item
-
-toks=strutil.TOKENIZER(path, ",")
-item=toks:next()
-while item ~= nil
-do
-	if strutil.strlen(item) > 0
-	then 
-		if action=="list" then ListCertificatesFromFile(item) 
-		elseif action=="show" then ShowCertificatesFromFile(item)
-		end
-	end
-item=toks:next()
-end
-
-end
-
-
-
+--add a cert to a bundle file
 function BundleAddCerts(S, certs)
 local i, cert, name
 
@@ -790,6 +552,7 @@ end
 end
 
 
+--bundle certificates together into a file
 function BundleCertificates(cmd)
 local toks, item, S, certs, path
 
@@ -816,14 +579,14 @@ end
 end
 
 
-
+--unbundle certificates from a file, into individual pem files
 function UnbundleCertificatesFromFile(path)
 local certs, cert, i, str
 
 certs=LoadCertificatesFromFile(path)
 for i,cert in ipairs(certs)
 do
-        str=CertificateSubjectToName(cert.subject)
+  str=CertificateSubjectToName(cert.subject)
 	if strutil.strlen(str) ==0 then str=tostring(i) end
 	str=str..".pem"
 	S=stream.STREAM(str, "w")
@@ -838,72 +601,239 @@ end
 
 end
 
+-- this module relates to local certificate-authorites for self-signed certificates
+-- these are stored in ~/.certtool/
+
+function CertAuthoritiesInit()
+local CA={}
+
+CA.path=function(self, name)
+return WorkingDir .. name .. "/"
+end
+
+CA.cert_path=function(self, name)
+return WorkingDir .. name .. "/ca.crt"
+end
+
+CA.key_path=function(self, name)
+return WorkingDir .. name .. "/ca.key"
+end
 
 
+-- get list of currently configured local certificates
+CA.list=function(self)
+local Dir, item
+local ca_list={}
 
-function ErrorsInCerts(certs, expire_warn_time)
-local i, cert, now, today
-local error_text=""
-local RetVal=false
-
-today=time.format("%Y/%m/%d")
-now=time.secs()
-
-for i,cert in ipairs(certs)
+Dir=filesys.GLOB(WorkingDir.."/*")
+item=Dir:next()
+while item ~= nil
 do
-	when=time.tosecs("%Y/%m/%dT%H:%M:%S", cert.end_date.."T"..cert.end_time)
-
-	if cert.start_date > today
-	then 
-	error_text=error_text.."ERROR: Certificate Not Yet Valid: "..cert.subject .. " valid: "..cert.start_date " - "..cert_end_date .."\n"
-	end
-
-	if cert.end_date < today then error_text=error_text.."ERROR: Certificate Expired: "..cert.subject .. " valid: "..cert.start_date " - "..cert_end_date .."\n"
-	elseif (when - now) < expire_warn_time then error_text=error_text.."WARN: Certificate ".. cert.subject .. " Expires in "..GetDuration(when - now) .. "\n"
-	end
+if filesys.exists(item.."/ca.crt") == true then table.insert(ca_list, item) end
+item=Dir:next()
 end
 
-if strutil.strlen(error_text) > 0 then
-print(error_text)
-RetVal=true
-end
-
+return(ca_list)
 end
 
 
+-- create a new CA on disk
+CA.create=function(self, details)
 
-function CertificateScrape(Cmd)
-local S, Out, certs, toks
+details=ui:askCertDetails(details)
+Out:puts("\n")
+Out:flush()
 
-if strutil.strlen(Cmd.server_name) == 0
+if filesys.exists(self:cert_path(details.name)) == true
 then
-	toks=strutil.TOKENIZER(Cmd.path, ":")
-	Cmd.server_name=toks:next()
+Out:puts("~yWARN: a CA named '"..details.name.."' already exists. Abort?~0\n")
+if ui:yesno("") == true then return false end
 end
 
-S=stream.STREAM("cmd:openssl s_client -showcerts -connect " .. Cmd.path .. " -servername " .. Cmd.server_name, "r innull errnull")
-if S ~= nil
+return openssl:mkCA(details)
+end
+
+
+-- chose a CA from the ones that exist already
+-- this function offers to create a new one if none exists
+CA.choose=function(self, details)
+local i, item, ca
+local str=""
+
+for i,item in ipairs(self:list())
+do
+str=str..filesys.basename(item).." "
+end
+
+if strutil.strlen(str) == 0
 then
-	certs=LoadCertificatesFromStream(S)
-	DisplayCertificateList(certs)
+	if ui:yesno("No Certificate Authorties. Create a new one?  ") == false then return nil end
 
-	if Cmd.export_certs == true
+	Out:puts("\n~eCreating New Certificate Authority~0\n")
+	ca=ui:askCertDetails(nil)
+	if ca ~= nil
 	then
-	Out=stream.STREAM(Cmd.path..".pem", "w")
-	BundleAddCerts(Out, certs)
-	Out:close()
+	openssl:mkCA(ca)
+	details.cert_authority=ca.name
 	end
+end
 
-	if strutil.strlen(Cmd.mail_errors_to) > 0
+if strutil.strlen(details.cert_authority) == 0
+then
+print("Select CA From: " .. str)
+details.cert_authority=Out:prompt("CA to use: ")
+Out:puts("\n")
+end
+
+
+if strutil.strlen(details.cert_authority) > 0
+then
+	if openssl:check_files(self:path(details.cert_authority), {"ca.crt", "ca.key", "ca.pfx"} ) == false
 	then
-	if ErrorsInCerts(certs, Cmd.mail_errors_to, Cmd.warn_time) == true then ExitStatus=1 end
+		print("ERROR: No such certification authority '" .. details.cert_authority .. "'")
+		details.cert_authority=nil
 	end
-
-S:close()
+else
+	details.cert_authority=nil
 end
 
 end
 
+
+-- get details like organization, local, country etc from a
+-- local certificate authority so these can be used in a
+-- certificate created by this authority. The idea is that people
+-- normally use an authority to create certificates for domains
+-- that have the same details as the authority
+CA.details=function(self, details)
+local ca_cert, certs, cert
+
+certs=LoadCertificatesFromFile(self:cert_path(details.cert_authority))
+cert=certs[1]
+
+if strutil.strlen(details.org) ==0 then details.org=cert.org end
+if strutil.strlen(details.location) ==0 then details.location=cert.location end
+if strutil.strlen(details.country) ==0 then details.country=cert.country end
+if strutil.strlen(details.email) ==0 then details.email=cert.email end
+
+return details
+end
+
+
+return CA
+end
+
+function UIInit()
+local ui={}
+
+ui.yesno=function(self, Prompt)
+local chooser
+
+chooser=Out:choice("prompt='"..Prompt.."' choices=yes,no")
+
+if chooser:run() == "yes" then return true end
+return false
+end
+
+
+ui.askPassphrase=function(self, Prompt)
+local str
+
+str=Out:prompt(Prompt, "hidetext")
+print("\n")
+
+return str
+end
+
+
+ui.askCertField=function(self, Prompt, minlen, maxlen, tip)
+local str=""
+local len
+
+while true
+do
+str=Out:prompt(Prompt)
+Out:puts("\n")
+
+len=strutil.strlen(str)
+if ( (len >= minlen) and (len <= maxlen) ) or len == 0 then break end
+
+Out:puts("~r".."ERROR: this field must be " .. tostring(minlen) .. " to " .. tostring(maxlen) .. " characters long. Or it can be left blank.~0\n")
+if strutil.strlen(tip) > 0 then Out:puts(tip.."\n") end
+end
+
+
+return str
+end
+
+
+
+ui.askCertDetails=function(self, details)
+local str
+
+if details == nil then details=CertDetailsCreate() end
+
+-- if name and anything else has been supplied, then assume the
+-- user just wants to use those items and doesn't need to be 
+-- asked for all details
+if strutil.strlen(details.name) > 0
+then
+if strutil.strlen(details.org) > 0 then return details end
+if strutil.strlen(details.country) > 0 then return details end
+if strutil.strlen(details.location) > 0 then return details end
+if strutil.strlen(details.email) > 0 then return details end
+end
+
+
+while strutil.strlen(details.name) == 0 
+do
+details.name=ui:askCertField("Name: ", 4, 64)
+if strutil.strlen(details.name) == 0 then print("\rYou must enter a name for the new item.~>") end
+end
+
+--[[
+if strutil.strlen(details.alt_names) == 0 
+then
+details.alt_names=Out:prompt("Alt. Names: ")
+Out:puts("\n")
+end
+]]--
+
+if strutil.strlen(details.org) == 0 
+then
+details.org=ui:askCertField("Organization: ", 1, 99999999)
+end
+
+if strutil.strlen(details.country) == 0 
+then
+details.country=ui:askCertField("Country: ", 2, 2, "This field should contain the 2-letter country code.")
+end
+
+if strutil.strlen(details.location) == 0 
+then
+details.location=ui:askCertField("Location: ", 1, 99999999)
+end
+
+if strutil.strlen(details.email) == 0 
+then
+details.email=ui:askCertField("Email: ", 1, 99999999)
+end
+
+if strutil.strlen(details.lifetime) == 0 
+then
+  str=ui:askCertField("Lifetime (days): ", 1, 99999999)
+  if strutil.strlen(str) == 0 then details.lifetime=365
+  else details.lifetime=tonumber(str)
+  end
+end
+
+
+return details
+end
+
+
+return ui
+end
 
 function DrawHelp()
 print("certtool.lua [action] [args]")
@@ -965,7 +895,6 @@ print("  certtool.lua pfx2pem ./server_cert.pfx")
 end
 
 
-
 function ParseCommandLine()
 local Cmd={}
 local i, item, toks
@@ -1005,7 +934,7 @@ then
 	arg[i+1]=""
 	elseif item=="-org"
 	then
-	Cmd.organization=arg[i+1]
+	Cmd.org=arg[i+1]
 	arg[i+1]=""
 	elseif item=="-location" or item=="-loc"
 	then
@@ -1063,9 +992,256 @@ end
 
 
 
+
+
+
+
+
+function CreateCA(cmd)
+local details
+
+details=CertDetailsFromCmd(cmd)
+if local_ca:create(details) == true
+then 
+Out:puts("Certificate Authority: '"..details.name.."' created.\n")
+else 
+Out:puts("~rERROR: CA creation failed~0\n")
+ExitStatus=1
+end
+
+end
+
+
+function CreateCSR(cmd)
+local details
+
+details=CertDetailsFromCmd(cmd)
+details=ui:askCertDetails(details)
+if openssl:mkCSR(details) == true
+then 
+Out:puts("Signing Request for '"..details.name.."' created.\n")
+else 
+Out:puts("~rERROR: CSR creation failed~0\n")
+ExitStatus=1
+end
+
+end
+
+
+function CreateCertificate(cmd)
+local details={}
+local ca_list, item, i, str
+
+details=CertDetailsFromCmd(cmd)
+
+if  details.cert_authority == nil then  local_ca:choose(details) end
+if  details.cert_authority == nil then  return end
+
+if cmd.copy_ca_values==true then details=local_ca:details(details) end
+
+Out:puts("~eCreate Certificate~0\n")
+while strutil.strlen(details.name) == 0 do details=ui:askCertDetails(details) end
+if details.lifetime==nil or details.lifetime==0 then details.lifetime=365 end
+
+if openssl:mkCertificate(details) == true 
+then 
+Out:puts("Certificate for '"..details.name.."' created.\n")
+else 
+Out:puts("~rERROR: Certificate creation failed~0\n")
+ExitStatus=1
+end
+
+
+end
+
+
+
+
+function DisplayCertificateList(certs)
+local cert, i, now, diff
+local end_date_color=""
+
+now=time.format("%Y/%m/%d")
+
+for i,cert in ipairs(certs)
+do
+end_date_color=""
+
+if cert.end_date < now 
+then 
+end_date_color="~r" 
+else
+end_date_color="~g"
+end
+
+Out:puts(cert.start_date .. "-" .. end_date_color .. cert.end_date .. "~0 ~e" .. cert.subject .. "~0 issuer=[" .. cert.issuer .. "/".. cert.issuer_org.."/"..cert.issuer_country.."]\n")
+end
+end
+
+
+function GetDuration(secs)
+local day, hour, str
+
+hour=3600
+day=hour * 24
+
+if secs > day then str=string.format("%0.2f", secs / day) .. " days"
+elseif secs > hour then str=string.format("%0.2f", secs / hour) .. " hours"
+else str=string.format("%0.2f", secs) .. " seconds" 
+end
+
+return str
+end
+
+
+
+
+function ListCertificatesFromFile(path)
+local certs
+
+certs=LoadCertificatesFromFile(path)
+if certs == nil or #certs == 0
+then
+print("ERROR: no certificates loaded");
+else
+DisplayCertificateList(certs)
+end
+
+end
+
+
+function ShowCertificatesFromFile(path)
+local certs, cert, i, S
+
+
+--openssl req -noout -text -in <CSR_FILE>
+
+certs=LoadCertificatesFromFile(path)
+if certs ~= nil
+then
+for i,cert in ipairs(certs)
+do
+	S=stream.STREAM("cmd:openssl x509 -text 2>/dev/null", "")
+	if S ~= nil
+	then
+		S:writeln(cert.pem)
+		Out:puts("~eCERTIFICATE " .. tostring(i) .. "   " .. cert.subject .. "~0\n")
+		str=S:readln()
+		while str ~= nil
+		do
+			str=strutil.trim(str)
+			print(str)
+			str=S:readln()
+		end
+	end
+	print("")
+	print("")
+	S:close()
+end
+end
+
+end
+
+
+function ProcessCertificatesFromFiles(action, path)
+local toks, item
+
+toks=strutil.TOKENIZER(path, ",")
+item=toks:next()
+while item ~= nil
+do
+	if strutil.strlen(item) > 0
+	then 
+		if action=="list" then ListCertificatesFromFile(item) 
+		elseif action=="show" then ShowCertificatesFromFile(item)
+		end
+	end
+item=toks:next()
+end
+
+end
+
+
+
+
+
+
+function ErrorsInCerts(certs, expire_warn_time)
+local i, cert, now, today
+local error_text=""
+local RetVal=false
+
+today=time.format("%Y/%m/%d")
+now=time.secs()
+
+for i,cert in ipairs(certs)
+do
+	when=time.tosecs("%Y/%m/%dT%H:%M:%S", cert.end_date.."T"..cert.end_time)
+
+	if cert.start_date > today
+	then 
+	error_text=error_text.."ERROR: Certificate Not Yet Valid: "..cert.subject .. " valid: "..cert.start_date " - "..cert_end_date .."\n"
+	end
+
+	if cert.end_date < today then error_text=error_text.."ERROR: Certificate Expired: "..cert.subject .. " valid: "..cert.start_date " - "..cert_end_date .."\n"
+	elseif (when - now) < expire_warn_time then error_text=error_text.."WARN: Certificate ".. cert.subject .. " Expires in "..GetDuration(when - now) .. "\n"
+	end
+end
+
+if strutil.strlen(error_text) > 0
+then
+print(error_text)
+RetVal=true
+end
+
+end
+
+
+
+function CertificateScrape(Cmd)
+local S, Out, certs, toks
+
+if strutil.strlen(Cmd.server_name) == 0
+then
+	toks=strutil.TOKENIZER(Cmd.path, ":")
+	Cmd.server_name=toks:next()
+end
+
+S=stream.STREAM("cmd:openssl s_client -showcerts -connect " .. Cmd.path .. " -servername " .. Cmd.server_name, "r innull errnull")
+if S ~= nil
+then
+	certs=LoadCertificatesFromStream(S)
+	DisplayCertificateList(certs)
+
+	if Cmd.export_certs == true
+	then
+	Out=stream.STREAM(Cmd.path..".pem", "w")
+	BundleAddCerts(Out, certs)
+	Out:close()
+	end
+
+	if strutil.strlen(Cmd.mail_errors_to) > 0
+	then
+	if ErrorsInCerts(certs, Cmd.mail_errors_to, Cmd.warn_time) == true then ExitStatus=1 end
+	end
+
+S:close()
+end
+
+end
+
+
+
+
+
 WorkingDir=process.getenv("HOME").."/.certtool/"
 filesys.mkdir(WorkingDir)
 Out=terminal.TERM()
+
+openssl=OpenSSLInit()
+local_ca=CertAuthoritiesInit()
+ui=UIInit()
+
 
 --process.lu_set("SSL:VerifyCertFile", "test.pem")
 
@@ -1101,10 +1277,10 @@ then
 CreateCertificate(Cmd)
 elseif Cmd.action=="pem2pfx"
 then
-OpenSSLPEMtoPKCS12(Cmd.outpath, Cmd.certpath, Cmd.keypath)
+openssl:PEMtoPKCS12(Cmd.outpath, Cmd.certpath, Cmd.keypath)
 elseif Cmd.action=="pfx2pem"
 then
-OpenSSLPKCS12toPEM(Cmd.path, Cmd.certpath, Cmd.keypath)
+openssl:PKCS12toPEM(Cmd.path, Cmd.certpath, Cmd.keypath)
 elseif Cmd.action=="version"
 then
 print("certtool.lua version "..Version)
@@ -1112,5 +1288,7 @@ else
 DrawHelp()
 end
  
+Out:puts("\n") 
 Out:reset()
+
 os.exit(ExitStatus)

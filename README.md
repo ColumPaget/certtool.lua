@@ -4,8 +4,16 @@ SYNOPSIS
 Certtool.lua is another tool for doing openssl operations and creating self-signed certificates. It requires libUseful (https://github.com/ColumPaget/libUseful) and libUseful-lua (https://github.com/ColumPaget/libUseful-lua) to be installed.
 
 
+INSTALL
+=======
+
+The program is a single 'certtool.lua' script. However, this is built out of many other .lua files, using 'make'. 'make install' will copy certtool.lua /usr/local/bin.
+
+
 USAGE
 =====
+
+It can either be run as 'lua certtool.lua' or you can use linux's 'binfmt' system to automatically invoke lua to run the script.
 
 ```
 certtool.lua [action] [args]
