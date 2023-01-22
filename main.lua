@@ -239,6 +239,33 @@ end
 end
 
 
+function EncryptFile(Cmd)
+local details={}
+
+outpath=filesys.basename(Cmd.path) .. ".enc"
+details.enc_algo="aes-256-cbc"
+details.md_algo="sha256"
+
+if strutil.strlen(Cmd.enc_algo) > 0 then details.enc_algo=Cmd.enc_algo end
+if strutil.strlen(Cmd.md_algo) > 0 then details.md_algo=Cmd.md_algo end
+if strutil.strlen(Cmd.outpath) > 0 then outpath=Cmd.outpath end
+openssl:encrypt_file(Cmd.path, outpath, details)
+end
+
+function DecryptFile(Cmd)
+local details={}
+local outpath
+
+outpath=filesys.basename(Cmd.path) .. ".dec"
+
+details.enc_algo="aes-256-cbc"
+details.md_algo="sha256"
+
+if strutil.strlen(Cmd.enc_algo) > 0 then details.enc_algo=Cmd.enc_algo end
+if strutil.strlen(Cmd.md_algo) > 0 then details.md_algo=Cmd.md_algo end
+if strutil.strlen(Cmd.outpath) > 0 then outpath=Cmd.outpath end
+openssl:decrypt_file(Cmd.path, outpath, details)
+end
 
 
 
@@ -289,6 +316,12 @@ openssl:PEMtoPKCS12(Cmd.outpath, Cmd.certpath, Cmd.keypath)
 elseif Cmd.action=="pfx2pem"
 then
 openssl:PKCS12toPEM(Cmd.path, Cmd.certpath, Cmd.keypath)
+elseif Cmd.action=="enc" or Cmd.action=="encrypt"
+then
+EncryptFile(Cmd)
+elseif Cmd.action=="dec" or Cmd.action=="decrypt"
+then
+DecryptFile(Cmd)
 elseif Cmd.action=="version"
 then
 print("certtool.lua version "..Version)

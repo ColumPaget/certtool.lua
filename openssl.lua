@@ -51,68 +51,105 @@ return str
 end
 
 
---this actually runs an openssl command, and handles any output from it
-openssl.command=function(self, cmd)
-local S, str
+--this handled messages that openssl emits, error messages or 
+--password requests
+openssl.cmd_process_output=function(self, S, Out, line)
+local str
 
-if g_Debug == true then print("CMD: "..cmd) end
+		if g_Debug==true then Out:puts("["..line.."]\n") end
 
-S=stream.STREAM("cmd:"..cmd, "pty")
-S:timeout(3000)
-str=self:cmdread(S)
-while str ~= nil
-do
-	str=strutil.trim(str)
+		if string.find(line, "encryption password") ~= nil
+		then
+		str=ui:askPassphrase(line..":")
+		S:writeln(str.."\n")
+		S:flush()
+		end
 
-	if strutil.strlen(str) > 0
-	then
-		if g_Debug==true then Out:puts("["..str.."]\n") end
+		if string.find(line, "decryption password") ~= nil
+		then
+		str=ui:askPassphrase(line..":")
+		S:writeln(str.."\n")
+		S:flush()
+		end
 
-		if string.find(str, "Enter pass phrase") ~= nil
+
+		if string.find(line, "Enter pass phrase") ~= nil
 		then
 		if KeyStore.ca_key == nil then KeyStore.ca_key=ui:askPassphrase("Enter password for Certificate Authority: ") end 
 		S:writeln(KeyStore.ca_key.."\n")
 		S:flush()
 		end
 
-		if string.find(str, "Enter Import Password") ~= nil
+		if string.find(line, "Enter Import Password") ~= nil
 		then
 		if KeyStore.cert_key == nil then KeyStore.cert_key=ui:askPassphrase("Enter password for source certificate: ") end 
 		S:writeln(KeyStore.cert_key.."\n")
 		S:flush()
 		end
 
-		if string.find(str, "Enter Export Password") ~= nil
+		if string.find(line, "Enter Export Password") ~= nil
 		then
 		if KeyStore.cert_key == nil then KeyStore.cert_key=ui:askPassphrase("Enter password for new certificate (blank for no passphrase): ") end 
 		S:writeln(KeyStore.cert_key.."\n")
 		S:flush()
 		end
 
-		if string.find(str, "problems making Certificate Request") ~= nil
+		if string.find(line, "problems making Certificate Request") ~= nil
 		then
-		Out:puts(str.."\n")
+		Out:puts(line.."\n")
 		end
 
-		if str == "bad number of days"
+		if string.find(line, "unsupported message digest type") ~= nil
+		then
+		Out:puts("~e~rERROR:" .. line .."~0\n")
+		end
+
+
+		if line == "bad number of days"
 		then
 		str=S:readln()
 		Out:puts("~e~rERROR: bad lifetime/number of days: "..str.."~0\n")
 		end
 
-		if str == "error"
+		if line == "error"
 		then 
 		str=S:readln()
 		Out:puts("~e~rERROR:"..str.."~0\n")
 		end
-
-	end
-
-	Out:flush()
-	str=self:cmdread(S)
 end
 
-S:close()
+
+
+--this actually runs an openssl command, and handles any output from it
+openssl.command=function(self, cmd)
+local S, str, pid
+
+if g_Debug == true then print("CMD: "..cmd) end
+
+S=stream.STREAM("cmd:"..cmd, "pty")
+if S ~= nil
+then
+	S:timeout(3000)
+	pid=S:getvalue("PeerPID")
+	str=self:cmdread(S)
+	while str ~= nil
+	do
+		str=strutil.trim(str)
+
+		if strutil.strlen(str) > 0 then self:cmd_process_output(S, Out, str) end
+
+		Out:flush()
+		str=self:cmdread(S)
+	end
+
+	S:close()
+else
+		Out:puts("~e~rERROR: failed to run openssl command:" .. cmd .. "~0\n")
+end
+
+str=process.waitStatus(pid)
+if str ~= 0 then Out:puts("~e~rERROR: openssl command exited with status:" .. str .. "~0\n") end
+
 end
 
 
@@ -178,6 +215,25 @@ self:command("openssl pkcs12 -nodes -in " .. inpath .. " -out " .. certpath)
 self:command("openssl pkcs12 -nodes -nocerts -in " .. inpath .. " -out " .. keypath)
 return self:check_files(".", {certpath, keypath}, true)
 end
+
+
+openssl.encrypt_file=function(self, inpath, outpath, encrypt_details)
+local str
+
+str="openssl enc -a -salt -" .. encrypt_details.enc_algo  .. " -md " .. encrypt_details.md_algo .. " -in ".. inpath
+if strutil.strlen(outpath) and outpath ~= "-" then str=str .. " -out " .. outpath end
+self:command(str)
+end
+
+
+openssl.decrypt_file=function(self, inpath, outpath, encrypt_details)
+local str
+
+str="openssl enc -d -a -" .. encrypt_details.enc_algo  .. " -md " .. encrypt_details.md_algo .. " -in ".. inpath
+if strutil.strlen(outpath) and outpath ~= "-" then str=str .. " -out " .. outpath end
+self:command(str)
+end
+
 
 
 -- make a CA on disk from 'details'

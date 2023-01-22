@@ -28,10 +28,6 @@ then
 	then
 	Cmd.outpath=arg[i+1]
 	arg[i+1]=""
-	elseif item=="-xk" or item=="-outkey"
-	then
-	Cmd.outkey=arg[i+1]
-	arg[i+1]=""
 	elseif item=="-days"
 	then
 	Cmd.lifetime=arg[i+1]
@@ -59,6 +55,14 @@ then
 	elseif item=="-copy"
 	then
 	Cmd.copy_ca_values=true
+	elseif item=="-algo"
+	then
+	Cmd.enc_algo=arg[i+1]
+	arg[i+1]=""
+	elseif item=="-digest" or item=="-hash"
+	then
+	Cmd.md_algo=arg[i+1]
+	arg[i+1]=""
 	elseif item=="-debug"
 	then
 	g_Debug=true

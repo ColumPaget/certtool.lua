@@ -1,11 +1,13 @@
 SYNOPSIS
 ========
 
-Certtool.lua is another tool for doing openssl operations and creating self-signed certificates. It requires libUseful (https://github.com/ColumPaget/libUseful) and libUseful-lua (https://github.com/ColumPaget/libUseful-lua) to be installed.
+Certtool.lua is another tool for doing openssl operations and creating self-signed certificates. 
 
 
 INSTALL
 =======
+
+certtool.lua  requires libUseful (https://github.com/ColumPaget/libUseful) and libUseful-lua (https://github.com/ColumPaget/libUseful-lua) to be installed. libUseful-lua requires SWIG (https://swig.org) to build and install.
 
 The program is a single 'certtool.lua' script. However, this is built out of many other .lua files, using 'make'. 'make install' will copy certtool.lua /usr/local/bin.
 
@@ -29,10 +31,14 @@ certtool.lua ca  <name> <certificate args>                   - create a certific
 certtool.lua csr <name> <certificate args>                   - create a signing request for a certificate with common-name <name> (if name is ommited ask for fields)
 certtool.lua cert <name> <certificate args>                  - create a certificate with common-name <name> (if name is ommited ask for fields)
 certtool.lua key <path>                                      - create public key at <path>
+certtool.lua enc <path> <options>                            - encrypt file at <path> with a password
+certtool.lua dec <path> <options>                            - decrypt file at <path> with a password
 certtool.lua --help                                          - this help
 certtool.lua -help                                           - this help
 certtool.lua -?                                              - this help
 ```
+
+
 
 <certificate args> are a set of arguments describing the fields within a certificate, signing request or C.A. If none are specified, and no <name> argument is specified then an interactive query mode will be activated to ask for values. The only field that must have a value is 'name'. If interactive query mode is not desired then arguments can be specified on the command-line using:
 
@@ -46,6 +52,18 @@ certtool.lua -?                                              - this help
  -email <address>            contact email address
  -ca <C.A. name>             name of certificate authority to use
 ```
+
+
+The 'enc' and 'dec' commands accept the following options/arguments:
+
+```
+ -out <path>          path to encrypted/decrypted output file. Without this certtool.lua will produce output filenames by appending '.enc' to encrypted files and '.dec'. to decrypted files
+ -o <path>            path to encrypted/decrypted output file. Without this certtool.lua will produce output filenames by appending '.enc' to encrypted files and '.dec'. to decrypted files
+ -algo <algorithm>    encryption algorithm to use (defaults to aes-256-cbc)
+ -hash <algorithm>    hashing/digest algorithm to use (defaults to sha256)
+ -digest <algorithm>  hashing/digest algorithm to use (defaults to sha256)
+```
+
 
 EXAMPLES
 ========

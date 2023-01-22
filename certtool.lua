@@ -7,7 +7,7 @@ require("time")
 
 
 
-Version="1.0"
+Version="1.2"
 KeyStore={}
 ExitStatus=0
 g_Debug=false
@@ -111,68 +111,105 @@ return str
 end
 
 
---this actually runs an openssl command, and handles any output from it
-openssl.command=function(self, cmd)
-local S, str
+--this handled messages that openssl emits, error messages or 
+--password requests
+openssl.cmd_process_output=function(self, S, Out, line)
+local str
 
-if g_Debug == true then print("CMD: "..cmd) end
+		if g_Debug==true then Out:puts("["..line.."]\n") end
 
-S=stream.STREAM("cmd:"..cmd, "pty")
-S:timeout(3000)
-str=self:cmdread(S)
-while str ~= nil
-do
-	str=strutil.trim(str)
+		if string.find(line, "encryption password") ~= nil
+		then
+		str=ui:askPassphrase(line..":")
+		S:writeln(str.."\n")
+		S:flush()
+		end
 
-	if strutil.strlen(str) > 0
-	then
-		if g_Debug==true then Out:puts("["..str.."]\n") end
+		if string.find(line, "decryption password") ~= nil
+		then
+		str=ui:askPassphrase(line..":")
+		S:writeln(str.."\n")
+		S:flush()
+		end
 
-		if string.find(str, "Enter pass phrase") ~= nil
+
+		if string.find(line, "Enter pass phrase") ~= nil
 		then
 		if KeyStore.ca_key == nil then KeyStore.ca_key=ui:askPassphrase("Enter password for Certificate Authority: ") end 
 		S:writeln(KeyStore.ca_key.."\n")
 		S:flush()
 		end
 
-		if string.find(str, "Enter Import Password") ~= nil
+		if string.find(line, "Enter Import Password") ~= nil
 		then
 		if KeyStore.cert_key == nil then KeyStore.cert_key=ui:askPassphrase("Enter password for source certificate: ") end 
 		S:writeln(KeyStore.cert_key.."\n")
 		S:flush()
 		end
 
-		if string.find(str, "Enter Export Password") ~= nil
+		if string.find(line, "Enter Export Password") ~= nil
 		then
 		if KeyStore.cert_key == nil then KeyStore.cert_key=ui:askPassphrase("Enter password for new certificate (blank for no passphrase): ") end 
 		S:writeln(KeyStore.cert_key.."\n")
 		S:flush()
 		end
 
-		if string.find(str, "problems making Certificate Request") ~= nil
+		if string.find(line, "problems making Certificate Request") ~= nil
 		then
-		Out:puts(str.."\n")
+		Out:puts(line.."\n")
 		end
 
-		if str == "bad number of days"
+		if string.find(line, "unsupported message digest type") ~= nil
+		then
+		Out:puts("~e~rERROR:" .. line .."~0\n")
+		end
+
+
+		if line == "bad number of days"
 		then
 		str=S:readln()
 		Out:puts("~e~rERROR: bad lifetime/number of days: "..str.."~0\n")
 		end
 
-		if str == "error"
+		if line == "error"
 		then 
 		str=S:readln()
 		Out:puts("~e~rERROR:"..str.."~0\n")
 		end
-
-	end
-
-	Out:flush()
-	str=self:cmdread(S)
 end
 
-S:close()
+
+
+--this actually runs an openssl command, and handles any output from it
+openssl.command=function(self, cmd)
+local S, str, pid
+
+if g_Debug == true then print("CMD: "..cmd) end
+
+S=stream.STREAM("cmd:"..cmd, "pty")
+if S ~= nil
+then
+	S:timeout(3000)
+	pid=S:getvalue("PeerPID")
+	str=self:cmdread(S)
+	while str ~= nil
+	do
+		str=strutil.trim(str)
+
+		if strutil.strlen(str) > 0 then self:cmd_process_output(S, Out, str) end
+
+		Out:flush()
+		str=self:cmdread(S)
+	end
+
+	S:close()
+else
+		Out:puts("~e~rERROR: failed to run openssl command:" .. cmd .. "~0\n")
+end
+
+str=process.waitStatus(pid)
+if str ~= 0 then Out:puts("~e~rERROR: openssl command exited with status:" .. str .. "~0\n") end
+
 end
 
 
@@ -238,6 +275,25 @@ self:command("openssl pkcs12 -nodes -in " .. inpath .. " -out " .. certpath)
 self:command("openssl pkcs12 -nodes -nocerts -in " .. inpath .. " -out " .. keypath)
 return self:check_files(".", {certpath, keypath}, true)
 end
+
+
+openssl.encrypt_file=function(self, inpath, outpath, encrypt_details)
+local str
+
+str="openssl enc -a -salt -" .. encrypt_details.enc_algo  .. " -md " .. encrypt_details.md_algo .. " -in ".. inpath
+if strutil.strlen(outpath) and outpath ~= "-" then str=str .. " -out " .. outpath end
+self:command(str)
+end
+
+
+openssl.decrypt_file=function(self, inpath, outpath, encrypt_details)
+local str
+
+str="openssl enc -d -a -" .. encrypt_details.enc_algo  .. " -md " .. encrypt_details.md_algo .. " -in ".. inpath
+if strutil.strlen(outpath) and outpath ~= "-" then str=str .. " -out " .. outpath end
+self:command(str)
+end
+
 
 
 -- make a CA on disk from 'details'
@@ -849,6 +905,8 @@ print("certtool.lua ca  <name> <certificate args>                   - create a c
 print("certtool.lua csr <name> <certificate args>                   - create a signing request for a certificate with common-name <name> (if name is ommited ask for fields)")
 print("certtool.lua cert <name> <certificate args>                  - create a certificate with common-name <name> (if name is ommited ask for fields)")
 print("certtool.lua key <path>                                      - create public key at <path>")
+print("certtool.lua enc <path> <options>                            - encrypt file at <path> with a password")
+print("certtool.lua dec <path> <options>                            - decrypt file at <path> with a password")
 print("certtool.lua --help                                          - this help")
 print("certtool.lua -help                                           - this help")
 print("certtool.lua -?                                              - this help")
@@ -864,6 +922,14 @@ print(" -cc <2-letter code>         2-letter country code")
 print(" -email <address>            contact email address")
 print(" -ca <C.A. name>             name of certificate authority to use")
 print(" -copy                       copy details from certificate of signing C.A.")
+print()
+print("The 'enc' and 'dec' commands accept the following options/arguments:")
+print()
+print(" -out <path>          path to encrypted/decrypted output file. Without this certtool.lua will produce output filenames by appending '.enc' to encrypted files and '.dec'. to decrypted files")
+print(" -o <path>            path to encrypted/decrypted output file. Without this certtool.lua will produce output filenames by appending '.enc' to encrypted files and '.dec'. to decrypted files")
+print(" -algo <algorithm>    encryption algorithm to use (defaults to aes-256-cbc)")
+print(" -hash <algorithm>    hashing/digest algorithm to use (defaults to sha256)")
+print(" -digest <algorithm>  hashing/digest algorithm to use (defaults to sha256)")
 print()
 print("Examples:")
 print()
@@ -924,10 +990,6 @@ then
 	then
 	Cmd.outpath=arg[i+1]
 	arg[i+1]=""
-	elseif item=="-xk" or item=="-outkey"
-	then
-	Cmd.outkey=arg[i+1]
-	arg[i+1]=""
 	elseif item=="-days"
 	then
 	Cmd.lifetime=arg[i+1]
@@ -955,6 +1017,14 @@ then
 	elseif item=="-copy"
 	then
 	Cmd.copy_ca_values=true
+	elseif item=="-algo"
+	then
+	Cmd.enc_algo=arg[i+1]
+	arg[i+1]=""
+	elseif item=="-digest" or item=="-hash"
+	then
+	Cmd.md_algo=arg[i+1]
+	arg[i+1]=""
 	elseif item=="-debug"
 	then
 	g_Debug=true
@@ -1231,6 +1301,33 @@ end
 end
 
 
+function EncryptFile(Cmd)
+local details={}
+
+outpath=filesys.basename(Cmd.path) .. ".enc"
+details.enc_algo="aes-256-cbc"
+details.md_algo="sha256"
+
+if strutil.strlen(Cmd.enc_algo) > 0 then details.enc_algo=Cmd.enc_algo end
+if strutil.strlen(Cmd.md_algo) > 0 then details.md_algo=Cmd.md_algo end
+if strutil.strlen(Cmd.outpath) > 0 then outpath=Cmd.outpath end
+openssl:encrypt_file(Cmd.path, outpath, details)
+end
+
+function DecryptFile(Cmd)
+local details={}
+local outpath
+
+outpath=filesys.basename(Cmd.path) .. ".dec"
+
+details.enc_algo="aes-256-cbc"
+details.md_algo="sha256"
+
+if strutil.strlen(Cmd.enc_algo) > 0 then details.enc_algo=Cmd.enc_algo end
+if strutil.strlen(Cmd.md_algo) > 0 then details.md_algo=Cmd.md_algo end
+if strutil.strlen(Cmd.outpath) > 0 then outpath=Cmd.outpath end
+openssl:decrypt_file(Cmd.path, outpath, details)
+end
 
 
 
@@ -1281,6 +1378,12 @@ openssl:PEMtoPKCS12(Cmd.outpath, Cmd.certpath, Cmd.keypath)
 elseif Cmd.action=="pfx2pem"
 then
 openssl:PKCS12toPEM(Cmd.path, Cmd.certpath, Cmd.keypath)
+elseif Cmd.action=="enc" or Cmd.action=="encrypt"
+then
+EncryptFile(Cmd)
+elseif Cmd.action=="dec" or Cmd.action=="decrypt"
+then
+DecryptFile(Cmd)
 elseif Cmd.action=="version"
 then
 print("certtool.lua version "..Version)
