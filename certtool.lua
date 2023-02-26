@@ -208,7 +208,7 @@ else
 end
 
 str=process.waitStatus(pid)
-if str ~= 0 then Out:puts("~e~rERROR: openssl command exited with status:" .. str .. "~0\n") end
+if str ~= "exit:0" then Out:puts("~e~rERROR: openssl command exited with status:" .. str .. "~0\n") end
 
 end
 
