@@ -39,6 +39,8 @@ certtool.lua -?                                              - this help
 ```
 
 
+when creating certificates, the path to an alternative working directory can be provided with `-dir <path>`. The working directory contains both certificate authorities and certificates produced with them, each stored in it's own directory.
+
 
 <certificate args> are a set of arguments describing the fields within a certificate, signing request or C.A. If none are specified, and no <name> argument is specified then an interactive query mode will be activated to ask for values. The only field that must have a value is 'name'. If interactive query mode is not desired then arguments can be specified on the command-line using:
 

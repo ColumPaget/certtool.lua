@@ -7,7 +7,7 @@ require("time")
 
 
 
-Version="1.2"
+Version="1.3"
 KeyStore={}
 ExitStatus=0
 g_Debug=false
@@ -111,25 +111,31 @@ return str
 end
 
 
+openssl.cmd_send_password=function(self, S, prompt, pass_count)
+local str
+
+	str=ui:askPassphrase(prompt..":")
+	S:writeln(str.."\n")
+	S:flush()
+end
+
+
 --this handled messages that openssl emits, error messages or 
 --password requests
 openssl.cmd_process_output=function(self, S, Out, line)
 local str
+local result=true
 
 		if g_Debug==true then Out:puts("["..line.."]\n") end
 
 		if string.find(line, "encryption password") ~= nil
 		then
-		str=ui:askPassphrase(line..":")
-		S:writeln(str.."\n")
-		S:flush()
+		openssl:cmd_send_password(S, line)
 		end
 
 		if string.find(line, "decryption password") ~= nil
 		then
-		str=ui:askPassphrase(line..":")
-		S:writeln(str.."\n")
-		S:flush()
+		openssl:cmd_send_password(S, line)
 		end
 
 
@@ -157,11 +163,13 @@ local str
 		if string.find(line, "problems making Certificate Request") ~= nil
 		then
 		Out:puts(line.."\n")
+		result=false
 		end
 
 		if string.find(line, "unsupported message digest type") ~= nil
 		then
 		Out:puts("~e~rERROR:" .. line .."~0\n")
+		result=false
 		end
 
 
@@ -169,13 +177,17 @@ local str
 		then
 		str=S:readln()
 		Out:puts("~e~rERROR: bad lifetime/number of days: "..str.."~0\n")
+		result=false
 		end
 
 		if line == "error"
 		then 
 		str=S:readln()
 		Out:puts("~e~rERROR:"..str.."~0\n")
+		result=false
 		end
+
+return result
 end
 
 
@@ -196,7 +208,14 @@ then
 	do
 		str=strutil.trim(str)
 
-		if strutil.strlen(str) > 0 then self:cmd_process_output(S, Out, str) end
+		if strutil.strlen(str) > 0 
+		then 
+			if self:cmd_process_output(S, Out, str) == false 
+			then
+			 process.kill(pid, process.SIGKILL)
+			 break 
+			end
+		end
 
 		Out:flush()
 		str=self:cmdread(S)
@@ -208,7 +227,10 @@ else
 end
 
 str=process.waitStatus(pid)
-if str ~= "exit:0" then Out:puts("~e~rERROR: openssl command exited with status:" .. str .. "~0\n") end
+if str == "exit:0" then return true end
+
+Out:puts("~e~rERROR: openssl command exited with status:" .. str .. "~0\n") 
+return false
 
 end
 
@@ -341,6 +363,7 @@ end
 
 
 path=WorkingDir .. details.cert_authority
+print("Using CA: "..path)
 process.chdir(path)
 
 path=WorkingDir .. details.name .. "/"
@@ -356,14 +379,17 @@ str="openssl req -new -key ".. keypath .. " -out " .. csrpath .. " -subj \"" .. 
 self:command(str)
 
 str="openssl x509 -req -days " .. details.lifetime .. " -in ".. csrpath .. " -CA ca.crt -CAkey ca.key -CAserial serial -out " .. certpath
-self:command(str)
+if self:command(str) == true
+then
+	--str="openssl rsa -in ".. path .. details.name .. ".key -out ".. path .. details.name .. ".key.insecure"
+	--self:command(str)
 
---str="openssl rsa -in ".. path .. details.name .. ".key -out ".. path .. details.name .. ".key.insecure"
---self:command(str)
+	self:PEMtoPKCS12(pfxpath, certpath , keypath)
 
-self:PEMtoPKCS12(pfxpath, certpath , keypath)
+	return self:check_files(WorkingDir .. "/" .. details.name, { details.name..".crt", details.name..".key"}, true) 
+end
 
-return self:check_files(WorkingDir .. "/" .. details.name, { details.name..".crt", details.name..".key"}, true) 
+return false
 end
 
 
@@ -911,6 +937,8 @@ print("certtool.lua --help                                          - this help"
 print("certtool.lua -help                                           - this help")
 print("certtool.lua -?                                              - this help")
 print()
+print("when creating certificates, the path to an alternative working directory can be provided with '-dir <path>'. The working directory contains both certificate authorities and certificates produced with them, each stored in it's own directory.");
+print()
 print("<certificate args> are a set of arguments describing the fields within a certificate, signing request or C.A. If none are specified, and no <name> argument is specified then an interactive query mode will be activated to ask for values. The only field that must have a value is 'name'. If interactive query mode is not desired then arguments can be specified on the command-line using:")
 print()
 print(" -days <n>                   days that certificate will be valid for")
@@ -979,9 +1007,13 @@ then
 	if i==1
 	then 
 	Cmd.action=item
+	elseif item=="-dir"
+	then
+	WorkingDir=arg[i+1]
+	arg[i+1]=""
 	elseif item=="-export"
 	then
-	Cmd.export_certs=true
+	cmd.export_certs=true
 	elseif item=="-k" or item=="-key"
 	then
 	Cmd.key=arg[i+1]
@@ -1330,8 +1362,14 @@ openssl:decrypt_file(Cmd.path, outpath, details)
 end
 
 
-
+--set default working dir
 WorkingDir=process.getenv("HOME").."/.certtool/"
+--parse command line
+Cmd=ParseCommandLine()
+--make sure working dir ends with a slash. We must do this after ParseCommandLine
+--because command-line args can change WorkingDir
+WorkingDir=filesys.pathaddslash(WorkingDir)
+
 filesys.mkdir(WorkingDir)
 Out=terminal.TERM()
 
@@ -1342,7 +1380,6 @@ ui=UIInit()
 
 --process.lu_set("SSL:VerifyCertFile", "test.pem")
 
-Cmd=ParseCommandLine()
 
 if Cmd.action=="list"
 then

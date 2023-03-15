@@ -268,8 +268,14 @@ openssl:decrypt_file(Cmd.path, outpath, details)
 end
 
 
-
+--set default working dir
 WorkingDir=process.getenv("HOME").."/.certtool/"
+--parse command line
+Cmd=ParseCommandLine()
+--make sure working dir ends with a slash. We must do this after ParseCommandLine
+--because command-line args can change WorkingDir
+WorkingDir=filesys.pathaddslash(WorkingDir)
+
 filesys.mkdir(WorkingDir)
 Out=terminal.TERM()
 
@@ -280,7 +286,6 @@ ui=UIInit()
 
 --process.lu_set("SSL:VerifyCertFile", "test.pem")
 
-Cmd=ParseCommandLine()
 
 if Cmd.action=="list"
 then

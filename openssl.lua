@@ -51,25 +51,31 @@ return str
 end
 
 
+openssl.cmd_send_password=function(self, S, prompt, pass_count)
+local str
+
+	str=ui:askPassphrase(prompt..":")
+	S:writeln(str.."\n")
+	S:flush()
+end
+
+
 --this handled messages that openssl emits, error messages or 
 --password requests
 openssl.cmd_process_output=function(self, S, Out, line)
 local str
+local result=true
 
 		if g_Debug==true then Out:puts("["..line.."]\n") end
 
 		if string.find(line, "encryption password") ~= nil
 		then
-		str=ui:askPassphrase(line..":")
-		S:writeln(str.."\n")
-		S:flush()
+		openssl:cmd_send_password(S, line)
 		end
 
 		if string.find(line, "decryption password") ~= nil
 		then
-		str=ui:askPassphrase(line..":")
-		S:writeln(str.."\n")
-		S:flush()
+		openssl:cmd_send_password(S, line)
 		end
 
 
@@ -97,11 +103,13 @@ local str
 		if string.find(line, "problems making Certificate Request") ~= nil
 		then
 		Out:puts(line.."\n")
+		result=false
 		end
 
 		if string.find(line, "unsupported message digest type") ~= nil
 		then
 		Out:puts("~e~rERROR:" .. line .."~0\n")
+		result=false
 		end
 
 
@@ -109,13 +117,17 @@ local str
 		then
 		str=S:readln()
 		Out:puts("~e~rERROR: bad lifetime/number of days: "..str.."~0\n")
+		result=false
 		end
 
 		if line == "error"
 		then 
 		str=S:readln()
 		Out:puts("~e~rERROR:"..str.."~0\n")
+		result=false
 		end
+
+return result
 end
 
 
@@ -136,7 +148,14 @@ then
 	do
 		str=strutil.trim(str)
 
-		if strutil.strlen(str) > 0 then self:cmd_process_output(S, Out, str) end
+		if strutil.strlen(str) > 0 
+		then 
+			if self:cmd_process_output(S, Out, str) == false 
+			then
+			 process.kill(pid, process.SIGKILL)
+			 break 
+			end
+		end
 
 		Out:flush()
 		str=self:cmdread(S)
@@ -148,7 +167,10 @@ else
 end
 
 str=process.waitStatus(pid)
-if str ~= "exit:0" then Out:puts("~e~rERROR: openssl command exited with status:" .. str .. "~0\n") end
+if str == "exit:0" then return true end
+
+Out:puts("~e~rERROR: openssl command exited with status:" .. str .. "~0\n") 
+return false
 
 end
 
@@ -281,6 +303,7 @@ end
 
 
 path=WorkingDir .. details.cert_authority
+print("Using CA: "..path)
 process.chdir(path)
 
 path=WorkingDir .. details.name .. "/"
@@ -296,14 +319,17 @@ str="openssl req -new -key ".. keypath .. " -out " .. csrpath .. " -subj \"" .. 
 self:command(str)
 
 str="openssl x509 -req -days " .. details.lifetime .. " -in ".. csrpath .. " -CA ca.crt -CAkey ca.key -CAserial serial -out " .. certpath
-self:command(str)
+if self:command(str) == true
+then
+	--str="openssl rsa -in ".. path .. details.name .. ".key -out ".. path .. details.name .. ".key.insecure"
+	--self:command(str)
 
---str="openssl rsa -in ".. path .. details.name .. ".key -out ".. path .. details.name .. ".key.insecure"
---self:command(str)
+	self:PEMtoPKCS12(pfxpath, certpath , keypath)
 
-self:PEMtoPKCS12(pfxpath, certpath , keypath)
+	return self:check_files(WorkingDir .. "/" .. details.name, { details.name..".crt", details.name..".key"}, true) 
+end
 
-return self:check_files(WorkingDir .. "/" .. details.name, { details.name..".crt", details.name..".key"}, true) 
+return false
 end
 
 

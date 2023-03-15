@@ -7,7 +7,7 @@ require("time")
 
 
 
-Version="1.2"
+Version="1.3"
 KeyStore={}
 ExitStatus=0
 g_Debug=false

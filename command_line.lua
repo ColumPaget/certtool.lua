@@ -17,9 +17,13 @@ then
 	if i==1
 	then 
 	Cmd.action=item
+	elseif item=="-dir"
+	then
+	WorkingDir=arg[i+1]
+	arg[i+1]=""
 	elseif item=="-export"
 	then
-	Cmd.export_certs=true
+	cmd.export_certs=true
 	elseif item=="-k" or item=="-key"
 	then
 	Cmd.key=arg[i+1]
