@@ -523,6 +523,7 @@ function DecodePEMContents(cert, S)
 local str
 
 	S:writeln(cert.pem.."\n")
+	S:commit()
 	str=S:readln()
 
 	while str ~= nil
@@ -559,12 +560,31 @@ local cert={}
 
 cert=CertDetailsCreate()
 cert.pem=pem
+cert.type="crt"
 
 S=stream.STREAM("cmd:openssl x509 -text 2>/dev/null", "")
 if S ~= nil then DecodePEMContents(cert, S) end
+S:close()
 
 return cert
 end
+
+
+function ExaminePEMCSR(pem)
+local S, str
+local cert={}
+
+cert=CertDetailsCreate()
+cert.pem=pem
+cert.type="csr"
+
+S=stream.STREAM("cmd:openssl req -noout -text", "")
+if S ~= nil then DecodePEMContents(cert, S) end
+S:close()
+
+return cert
+end
+
 
 
 function LoadCertificatesFromStream(S)
@@ -577,6 +597,7 @@ while str ~= nil
 do
 	str=strutil.trim(str)
 	str=strutil.trim(str)
+
 	if strutil.strlen(str) > 0
 	then
 	if str=="-----BEGIN CERTIFICATE-----" 
@@ -590,6 +611,11 @@ do
 		pem=pem..str.."\n"
 		cert=ExaminePEMCertificate(pem)
 		table.insert(certs, cert)
+	elseif str=="-----END CERTIFICATE REQUEST-----"
+	then
+		pem=pem..str.."\n"
+		cert=ExaminePEMCSR(pem)
+		table.insert(certs, cert)
 	else
 	pem=pem..str.."\n"
 	end
@@ -597,6 +623,7 @@ do
 
 str=S:readln()
 end
+
 
 return certs
 end
@@ -1212,18 +1239,29 @@ end
 end
 
 
+
+function ShowCertificateLaunchOpenssl(cert)
+local S
+
+if strutil.strlen(cert.pem) ==0 then return nil end
+
+if cert.type=="crt" then S=stream.STREAM("cmd:openssl x509 -text 2>/dev/null", "")
+elseif cert.type=="csr" then S=stream.STREAM("cmd:openssl req -noout -text 2>/dev/null", "")
+end
+
+return S
+end
+
+
 function ShowCertificatesFromFile(path)
 local certs, cert, i, S
-
-
---openssl req -noout -text -in <CSR_FILE>
 
 certs=LoadCertificatesFromFile(path)
 if certs ~= nil
 then
 for i,cert in ipairs(certs)
 do
-	S=stream.STREAM("cmd:openssl x509 -text 2>/dev/null", "")
+	S=ShowCertificateLaunchOpenssl(cert)
 	if S ~= nil
 	then
 		S:writeln(cert.pem)
@@ -1235,10 +1273,10 @@ do
 			print(str)
 			str=S:readln()
 		end
+	S:close()
 	end
 	print("")
 	print("")
-	S:close()
 end
 end
 

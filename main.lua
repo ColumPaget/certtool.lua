@@ -118,18 +118,29 @@ end
 end
 
 
+
+function ShowCertificateLaunchOpenssl(cert)
+local S
+
+if strutil.strlen(cert.pem) ==0 then return nil end
+
+if cert.type=="crt" then S=stream.STREAM("cmd:openssl x509 -text 2>/dev/null", "")
+elseif cert.type=="csr" then S=stream.STREAM("cmd:openssl req -noout -text 2>/dev/null", "")
+end
+
+return S
+end
+
+
 function ShowCertificatesFromFile(path)
 local certs, cert, i, S
-
-
---openssl req -noout -text -in <CSR_FILE>
 
 certs=LoadCertificatesFromFile(path)
 if certs ~= nil
 then
 for i,cert in ipairs(certs)
 do
-	S=stream.STREAM("cmd:openssl x509 -text 2>/dev/null", "")
+	S=ShowCertificateLaunchOpenssl(cert)
 	if S ~= nil
 	then
 		S:writeln(cert.pem)
@@ -141,10 +152,10 @@ do
 			print(str)
 			str=S:readln()
 		end
+	S:close()
 	end
 	print("")
 	print("")
-	S:close()
 end
 end
 
