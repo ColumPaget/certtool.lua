@@ -9,7 +9,11 @@ INSTALL
 
 certtool.lua  requires libUseful (https://github.com/ColumPaget/libUseful) and libUseful-lua (https://github.com/ColumPaget/libUseful-lua) to be installed. libUseful-lua requires SWIG (https://swig.org) to build and install.
 
-The program is a single 'certtool.lua' script. However, this is built out of many other .lua files, using 'make'. 'make install' will copy certtool.lua /usr/local/bin.
+The program is a single 'certtool.lua' script. However, this is built out of many other .lua files, using 'make'. 
+
+'make install' will copy certtool.lua /usr/local/bin and it's manpage to /usr/local/share/man/man1
+
+'make install PREFIX=/usr' will copy certtool.lua to /usr/bin and the manpage to /usr/share/man/man1 instead. 
 
 
 USAGE
