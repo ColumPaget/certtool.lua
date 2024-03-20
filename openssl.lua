@@ -62,7 +62,7 @@ end
 
 --this handled messages that openssl emits, error messages or 
 --password requests
-openssl.cmd_process_output=function(self, S, Out, line)
+openssl.cmd_process_output=function(self, S, Out, line, ctx)
 local str
 local result=true
 
@@ -79,9 +79,17 @@ local result=true
 		end
 
 
-		if string.find(line, "Enter pass phrase") ~= nil
+		if string.find(line, "Enter pass phrase") ~= nil or string.find(line, "Enter PEM pass phrase") ~= nil
 		then
-		if KeyStore.ca_key == nil then KeyStore.ca_key=ui:askPassphrase("Enter password for Certificate Authority: ") end 
+
+		if KeyStore.ca_key == nil 
+		then 
+		str=""
+		if ctx ~= nil then str=ctx.cert_authority end
+		KeyStore.ca_key=ui:askPassphrase("Enter password for Certificate Authority: ", local_ca:get_pass_hint(str))
+		if ctx ~= nil and ctx.action=="mkCA" then ui:askPassphraseHint("Enter hint for passphrase (blank for no hint): ", ctx) end
+		end 
+
 		S:writeln(KeyStore.ca_key.."\n")
 		S:flush()
 		end
@@ -133,7 +141,7 @@ end
 
 
 --this actually runs an openssl command, and handles any output from it
-openssl.command=function(self, cmd)
+openssl.command=function(self, cmd, ctx)
 local S, str, pid
 
 if g_Debug == true then print("CMD: "..cmd) end
@@ -150,7 +158,7 @@ then
 
 		if strutil.strlen(str) > 0 
 		then 
-			if self:cmd_process_output(S, Out, str) == false 
+			if self:cmd_process_output(S, Out, str, ctx) == false 
 			then
 			 process.kill(pid, process.SIGKILL)
 			 break 
@@ -268,6 +276,7 @@ then
 	return
 end
 
+details.action="mkCA"
 str=WorkingDir .. details.name .. "/"
 filesys.mkdirPath(str)
 process.chdir(str)
@@ -281,9 +290,9 @@ S:close()
 S=stream.STREAM("index.txt","w")
 S:close()
 
-self:command("openssl genrsa -des3 -out ca.key 2048")
+self:command("openssl genrsa -des3 -out ca.key 2048", details)
 str=self:mkSubject(details)
-self:command("openssl req -new -x509 -days 3650 -key ca.key -subj \""..str.."\" -out ca.crt")
+self:command("openssl req -new -x509 -days 3650 -key ca.key -subj \""..str.."\" -out ca.crt", details)
 
 
 return self:check_files(WorkingDir .. details.name .. "/", {"ca.crt", "ca.key"}, true )
@@ -313,13 +322,13 @@ certpath=path .. details.name .. ".crt"
 keypath=path .. details.name .. ".key"
 pfxpath=path .. details.name .. ".pfx"
 
-self:command("openssl genrsa -out ".. path .. details.name..".key 2048")
+self:command("openssl genrsa -out ".. path .. details.name..".key " .. details.bitswide)
 str="openssl req -new -key ".. keypath .. " -out " .. csrpath .. " -subj \"" .. self:mkSubject(details) .."\""
 -- if strutil.strlen(details.alt_names) > 0 then str = str .. " -addext \"subjectAltName=" .. details.alt_names .. "\"" end
 self:command(str)
 
 str="openssl x509 -req -days " .. details.lifetime .. " -in ".. csrpath .. " -CA ca.crt -CAkey ca.key -CAserial serial -out " .. certpath
-if self:command(str) == true
+if self:command(str, details) == true
 then
 	--str="openssl rsa -in ".. path .. details.name .. ".key -out ".. path .. details.name .. ".key.insecure"
 	--self:command(str)

@@ -1,25 +1,17 @@
+title: certtool.lua
+mansection: 1
+date: 20 March 2024
+
 SYNOPSIS
 ========
 
-Certtool.lua is another tool for doing openssl operations and creating self-signed certificates. 
-
-
-INSTALL
-=======
-
-certtool.lua  requires libUseful (https://github.com/ColumPaget/libUseful) and libUseful-lua (https://github.com/ColumPaget/libUseful-lua) to be installed. libUseful-lua requires SWIG (https://swig.org) to build and install.
-
-The program is a single 'certtool.lua' script. However, this is built out of many other .lua files, using 'make'. 'make install' will copy certtool.lua /usr/local/bin.
+certtool.lua is a lua script that aims to simplify certificate creation/management and file encryption with openssl.
 
 
 USAGE
 =====
 
-It can either be run as 'lua certtool.lua' or you can use linux's 'binfmt' system to automatically invoke lua to run the script.
-
 ```
-certtool.lua [action] [args]
-
 certtool.lua list <path>                                     - list certificates in file at <path>
 certtool.lua show <path>                                     - show details of certificates in file at <path>
 certtool.lua bundle <path 1> ... <path n> -out <outpath>     - bundle certificates listed into a single filei at 'outpath'
@@ -38,85 +30,130 @@ certtool.lua -help                                           - this help
 certtool.lua -?                                              - this help
 ```
 
+OPTIONS
+=======
 
-when creating certificates, the path to an alternative working directory can be provided with `-dir <path>`. The working directory contains both certificate authorities and certificates produced with them, each stored in it's own directory.
+-dir <path>
+: path to alternate working directorty to store CAs/certificates in (defaults to ~/.certtool)
 
+-days <n>
+: days that certificate will be valid for
 
-<certificate args> are a set of arguments describing the fields within a certificate, signing request or C.A. If none are specified, and no <name> argument is specified then an interactive query mode will be activated to ask for values. The only field that must have a value is 'name'. If interactive query mode is not desired then arguments can be specified on the command-line using:
+-org <org name>
+: organization name of certificate
 
-```
- -bits <n>                   keysize when creating certificate
- -days <n>                   days that certificate will be valid for
- -org  <org name>            organization name
- -location  <location>       location
- -loc  <location>            location
- -country <2-letter code>    2-letter country code
- -cc <2-letter code>         2-letter country code
- -email <address>            contact email address
- -ca <C.A. name>             name of certificate authority to use
-```
+-location  <location>
+: organization location of certificate
 
+-loc  <location>
+: organization location of certificate
 
-The 'enc' and 'dec' commands accept the following options/arguments:
+-country <2-letter code>
+: organization 2-letter country code of certificate
 
-```
- -out <path>          path to encrypted/decrypted output file. Without this certtool.lua will produce output filenames by appending '.enc' to encrypted files and '.dec'. to decrypted files
- -o <path>            path to encrypted/decrypted output file. Without this certtool.lua will produce output filenames by appending '.enc' to encrypted files and '.dec'. to decrypted files
- -algo <algorithm>    encryption algorithm to use (defaults to aes-256-cbc)
- -hash <algorithm>    hashing/digest algorithm to use (defaults to sha256)
- -digest <algorithm>  hashing/digest algorithm to use (defaults to sha256)
-```
+-cc <2-letter code>
+: organization 2-letter country code of certificate
+
+-email <address>
+: contact email address of certificate
+
+-ca <C.A. name>
+: name of certificate authority to use when creating certificates
+
+-copy
+: copy details (location, email etc) of certificate from signing C.A.
+
+-out <path>
+: set output path for the the `enc` and `dec` commands. Without this certtool.lua will produce output filenames by appending '.enc' to encrypted files and '.dec'. to decrypted files
+
+-o <path>
+: set output path for the the `enc` and `dec` commands. Without this certtool.lua will produce output filenames by appending '.enc' to encrypted files and '.dec'. to decrypted files
+
+-algo <algorithm>
+: encryption algorithm to use for the enc and dec commands (defaults to aes-256-cbc)
+
+-hash <algorithm>
+: hashing/digest algorithm to use (defaults to sha256)
+
+-digest <algorithm>
+: hashing/digest algorithm to use (defaults to sha256)
+
+-bits <bitsize>
+: keysize in bits when creating certificates
 
 
 EXAMPLES
 ========
 
-
 Show certificate details
+
 ```
   certtool.lua show ./server.crt
 ```
+
 Connect to service and output its certificate list
+
 ```
   certtool.lua scrape myserver:443
 ```
+
 Bundle certificates into cert_bundle.pem
+
 ```
   certtool.lua bundle -out cert_bundle.pem cert1.pem cert2.pem cert3.pem
 ```
+
 Unbundle certificates from cert_bundle.pem into seperate files
+
 ```
   certtool.lua unbundle cert_bundle.pem
 ```
+
 Create a certificate authority in interactive mode (asks for needed info)
+
 ```
   certtool.lua ca
 ```
+
 Create a certificate authority called 'myCA' with org and email fields set
+
 ```
   certtool.lua ca myCA -org 'My Company' -email webmaster@my.com
 ```
+
 Create a certificate signing request in interactive mode
+
 ```
   certtool.lua csr
 ```
+
 Create a certificate signing request (to be signed by another CA) for a certificate called 'server_cert'
+
 ```
   certtool.lua csr server_cert
 ```
+
 Create a certificate in interactive mode
+
 ```
   certtool.lua cert
 ```
+
 Create a certificate called 'server_cert' using C.A. 'myCA'
+
 ```
   certtool.lua cert server_cert -ca myCA
 ```
+
 Pack key and certificate into pfx/pkcs12 file
+
 ```
   certtool.lua pem2pfx server_cert.pfx server_cert.crt server_cert.key
 ```
+
 Unpack key and certificate from pfx/pkcs12 file
+
 ```
   certtool.lua pfx2pem ./server_cert.pfx
 ```
+

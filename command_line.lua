@@ -8,6 +8,8 @@ Cmd.outpath="-"
 Cmd.mail_errors_to=""
 Cmd.warn_time=665 * 24 * 3600
 Cmd.copy_ca_values=false
+Cmd.bitswide=2048
+Cmd.lifetime=365
 
 for i,item in ipairs(arg)
 do
@@ -66,6 +68,10 @@ then
 	elseif item=="-digest" or item=="-hash"
 	then
 	Cmd.md_algo=arg[i+1]
+	arg[i+1]=""
+	elseif item=="-bits"
+	then
+	Cmd.bitswide=arg[i+1]
 	arg[i+1]=""
 	elseif item=="-debug"
 	then

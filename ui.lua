@@ -3,19 +3,32 @@ function UIInit()
 local ui={}
 
 ui.yesno=function(self, Prompt)
-local chooser
+local chooser, str
 
 chooser=Out:choice("prompt='"..Prompt.."' choices=yes,no")
+str=chooser:run()
+print()
 
-if chooser:run() == "yes" then return true end
+if str == "yes" then return true end
 return false
 end
 
 
-ui.askPassphrase=function(self, Prompt)
+ui.askPassphrase=function(self, Prompt, hint)
 local str
 
-str=Out:prompt(Prompt, "hidetext")
+if strutil.strlen(hint) > 0 then print("passphrase hint: " .. hint) end
+str=Out:prompt(Prompt, "startext")
+print("\n")
+
+return str
+end
+
+ui.askPassphraseHint=function(self, Prompt, ctx)
+local str
+
+str=Out:prompt(Prompt)
+if strutil.strlen(str) > 0 then local_ca:set_pass_hint(ctx.name, str) end
 print("\n")
 
 return str
@@ -98,9 +111,7 @@ end
 if strutil.strlen(details.lifetime) == 0 
 then
   str=ui:askCertField("Lifetime (days): ", 1, 99999999)
-  if strutil.strlen(str) == 0 then details.lifetime=365
-  else details.lifetime=tonumber(str)
-  end
+  if strutil.strlen(str) > 0 then details.lifetime=tonumber(str) end
 end
 
 

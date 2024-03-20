@@ -16,6 +16,31 @@ CA.key_path=function(self, name)
 return WorkingDir .. name .. "/ca.key"
 end
 
+CA.get_pass_hint=function(self, name)
+local S, str
+
+if strutil.strlen(name)==0 then return("") end
+
+S=stream.STREAM(self:path(name) .. "/passhint.txt", "r") 
+if S == nil then return("") end
+str=S:readdoc()
+S:close()
+
+return(str)
+end
+
+
+CA.set_pass_hint=function(self, name, hint)
+local S, str
+
+S=stream.STREAM(self:path(name) .. "/passhint.txt", "w")
+if S == nil then return(false) end
+S:writeln(hint)
+S:close()
+
+return(true)
+end
+
 
 -- get list of currently configured local certificates
 CA.list=function(self)

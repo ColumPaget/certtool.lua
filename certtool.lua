@@ -53,6 +53,7 @@ details.org=cmd.org
 details.location=cmd.location
 details.email=cmd.email
 details.lifetime=cmd.lifetime
+details.bitswide=cmd.bitswide
 
 return details
 end
@@ -122,7 +123,7 @@ end
 
 --this handled messages that openssl emits, error messages or 
 --password requests
-openssl.cmd_process_output=function(self, S, Out, line)
+openssl.cmd_process_output=function(self, S, Out, line, ctx)
 local str
 local result=true
 
@@ -139,9 +140,17 @@ local result=true
 		end
 
 
-		if string.find(line, "Enter pass phrase") ~= nil
+		if string.find(line, "Enter pass phrase") ~= nil or string.find(line, "Enter PEM pass phrase") ~= nil
 		then
-		if KeyStore.ca_key == nil then KeyStore.ca_key=ui:askPassphrase("Enter password for Certificate Authority: ") end 
+
+		if KeyStore.ca_key == nil 
+		then 
+		str=""
+		if ctx ~= nil then str=ctx.cert_authority end
+		KeyStore.ca_key=ui:askPassphrase("Enter password for Certificate Authority: ", local_ca:get_pass_hint(str))
+		if ctx ~= nil and ctx.action=="mkCA" then ui:askPassphraseHint("Enter hint for passphrase (blank for no hint): ", ctx) end
+		end 
+
 		S:writeln(KeyStore.ca_key.."\n")
 		S:flush()
 		end
@@ -193,7 +202,7 @@ end
 
 
 --this actually runs an openssl command, and handles any output from it
-openssl.command=function(self, cmd)
+openssl.command=function(self, cmd, ctx)
 local S, str, pid
 
 if g_Debug == true then print("CMD: "..cmd) end
@@ -210,7 +219,7 @@ then
 
 		if strutil.strlen(str) > 0 
 		then 
-			if self:cmd_process_output(S, Out, str) == false 
+			if self:cmd_process_output(S, Out, str, ctx) == false 
 			then
 			 process.kill(pid, process.SIGKILL)
 			 break 
@@ -328,6 +337,7 @@ then
 	return
 end
 
+details.action="mkCA"
 str=WorkingDir .. details.name .. "/"
 filesys.mkdirPath(str)
 process.chdir(str)
@@ -341,9 +351,9 @@ S:close()
 S=stream.STREAM("index.txt","w")
 S:close()
 
-self:command("openssl genrsa -des3 -out ca.key 2048")
+self:command("openssl genrsa -des3 -out ca.key 2048", details)
 str=self:mkSubject(details)
-self:command("openssl req -new -x509 -days 3650 -key ca.key -subj \""..str.."\" -out ca.crt")
+self:command("openssl req -new -x509 -days 3650 -key ca.key -subj \""..str.."\" -out ca.crt", details)
 
 
 return self:check_files(WorkingDir .. details.name .. "/", {"ca.crt", "ca.key"}, true )
@@ -373,13 +383,13 @@ certpath=path .. details.name .. ".crt"
 keypath=path .. details.name .. ".key"
 pfxpath=path .. details.name .. ".pfx"
 
-self:command("openssl genrsa -out ".. path .. details.name..".key 2048")
+self:command("openssl genrsa -out ".. path .. details.name..".key " .. details.bitswide)
 str="openssl req -new -key ".. keypath .. " -out " .. csrpath .. " -subj \"" .. self:mkSubject(details) .."\""
 -- if strutil.strlen(details.alt_names) > 0 then str = str .. " -addext \"subjectAltName=" .. details.alt_names .. "\"" end
 self:command(str)
 
 str="openssl x509 -req -days " .. details.lifetime .. " -in ".. csrpath .. " -CA ca.crt -CAkey ca.key -CAserial serial -out " .. certpath
-if self:command(str) == true
+if self:command(str, details) == true
 then
 	--str="openssl rsa -in ".. path .. details.name .. ".key -out ".. path .. details.name .. ".key.insecure"
 	--self:command(str)
@@ -728,6 +738,31 @@ CA.key_path=function(self, name)
 return WorkingDir .. name .. "/ca.key"
 end
 
+CA.get_pass_hint=function(self, name)
+local S, str
+
+if strutil.strlen(name)==0 then return("") end
+
+S=stream.STREAM(self:path(name) .. "/passhint.txt", "r") 
+if S == nil then return("") end
+str=S:readdoc()
+S:close()
+
+return(str)
+end
+
+
+CA.set_pass_hint=function(self, name, hint)
+local S, str
+
+S=stream.STREAM(self:path(name) .. "/passhint.txt", "w")
+if S == nil then return(false) end
+S:writeln(hint)
+S:close()
+
+return(true)
+end
+
 
 -- get list of currently configured local certificates
 CA.list=function(self)
@@ -836,19 +871,32 @@ function UIInit()
 local ui={}
 
 ui.yesno=function(self, Prompt)
-local chooser
+local chooser, str
 
 chooser=Out:choice("prompt='"..Prompt.."' choices=yes,no")
+str=chooser:run()
+print()
 
-if chooser:run() == "yes" then return true end
+if str == "yes" then return true end
 return false
 end
 
 
-ui.askPassphrase=function(self, Prompt)
+ui.askPassphrase=function(self, Prompt, hint)
 local str
 
-str=Out:prompt(Prompt, "hidetext")
+if strutil.strlen(hint) > 0 then print("passphrase hint: " .. hint) end
+str=Out:prompt(Prompt, "startext")
+print("\n")
+
+return str
+end
+
+ui.askPassphraseHint=function(self, Prompt, ctx)
+local str
+
+str=Out:prompt(Prompt)
+if strutil.strlen(str) > 0 then local_ca:set_pass_hint(ctx.name, str) end
 print("\n")
 
 return str
@@ -931,9 +979,7 @@ end
 if strutil.strlen(details.lifetime) == 0 
 then
   str=ui:askCertField("Lifetime (days): ", 1, 99999999)
-  if strutil.strlen(str) == 0 then details.lifetime=365
-  else details.lifetime=tonumber(str)
-  end
+  if strutil.strlen(str) > 0 then details.lifetime=tonumber(str) end
 end
 
 
@@ -968,6 +1014,7 @@ print("when creating certificates, the path to an alternative working directory 
 print()
 print("<certificate args> are a set of arguments describing the fields within a certificate, signing request or C.A. If none are specified, and no <name> argument is specified then an interactive query mode will be activated to ask for values. The only field that must have a value is 'name'. If interactive query mode is not desired then arguments can be specified on the command-line using:")
 print()
+print(" -bits <n>                   bitwidth of certificate key, defaults to 2048")
 print(" -days <n>                   days that certificate will be valid for")
 print(" -org  <org name>            organization name")
 print(" -location  <location>       location")
@@ -1025,6 +1072,8 @@ Cmd.outpath="-"
 Cmd.mail_errors_to=""
 Cmd.warn_time=665 * 24 * 3600
 Cmd.copy_ca_values=false
+Cmd.bitswide=2048
+Cmd.lifetime=365
 
 for i,item in ipairs(arg)
 do
@@ -1083,6 +1132,10 @@ then
 	elseif item=="-digest" or item=="-hash"
 	then
 	Cmd.md_algo=arg[i+1]
+	arg[i+1]=""
+	elseif item=="-bits"
+	then
+	Cmd.bitswide=arg[i+1]
 	arg[i+1]=""
 	elseif item=="-debug"
 	then

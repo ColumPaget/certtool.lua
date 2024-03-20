@@ -1,0 +1,265 @@
+.TH  certtool.lua  1 " 20 March 2024"
+
+.SH SYNOPSIS
+ 
+.P
+certtool.lua is a lua script that aims to simplify certificate creation/management and file encryption with openssl.
+.SH USAGE
+ 
+.nf
+
+certtool.lua list <path>                                     \- list certificates in file at <path>
+certtool.lua show <path>                                     \- show details of certificates in file at <path>
+certtool.lua bundle <path 1> ... <path n> \-out <outpath>     \- bundle certificates listed into a single filei at \(aqoutpath\(aq
+certtool.lua unbundle <path>                                 \- unbundle certificates out of a single file into a file per certificate
+certtool.lua scrape <hostname>:<port>                        \- connect to host and print/check certificates it offers
+certtool.lua pem2pfx <cert> <key>                            \- connect to host and print/check certificates it offers
+certtool.lua pfx2pem <path>                                  \- unpack pfx file at <path> into pem certificate and key files
+certtool.lua ca  <name> <certificate args>                   \- create a certificate authority called <name> (if name is ommited ask for fields)
+certtool.lua csr <name> <certificate args>                   \- create a signing request for a certificate with common\-name <name> (if name is ommited ask for fields)
+certtool.lua cert <name> <certificate args>                  \- create a certificate with common\-name <name> (if name is ommited ask for fields)
+certtool.lua key <path>                                      \- create public key at <path>
+certtool.lua enc <path> <options>                            \- encrypt file at <path> with a password
+certtool.lua dec <path> <options>                            \- decrypt file at <path> with a password
+certtool.lua \-\-help                                          \- this help
+certtool.lua \-help                                           \- this help
+certtool.lua \-?                                              \- this help
+.fi
+.ad b
+.nop  
+.SH OPTIONS
+  
+.P
+
+.br
+ 
+.TP
+.B -dir <path>
+ path to alternate working directorty to store CAs/certificates in (defaults to \*(ti/.certtool)
+   
+.P
+
+.br
+ 
+.TP
+.B -days <n>
+ days that certificate will be valid for
+   
+.P
+
+.br
+ 
+.TP
+.B -org <org name>
+ organization name of certificate
+   
+.P
+
+.br
+ 
+.TP
+.B -location  <location>
+ organization location of certificate
+   
+.P
+
+.br
+ 
+.TP
+.B -loc  <location>
+ organization location of certificate
+   
+.P
+
+.br
+ 
+.TP
+.B -country <2-letter code>
+ organization 2-letter country code of certificate
+   
+.P
+
+.br
+ 
+.TP
+.B -cc <2-letter code>
+ organization 2-letter country code of certificate
+   
+.P
+
+.br
+ 
+.TP
+.B -email <address>
+ contact email address of certificate
+   
+.P
+
+.br
+ 
+.TP
+.B -ca <C.A. name>
+ name of certificate authority to use when creating certificates
+   
+.P
+
+.br
+ 
+.TP
+.B -copy
+ copy details (location, email etc) of certificate from signing C.A.
+   
+.P
+
+.br
+ 
+.TP
+.B -out <path>
+ set output path for the the 
+.na
+enc
+.ad n
+.nop and 
+.na
+dec
+.ad n
+.nop commands. Without this certtool.lua will produce output filenames by appending \(aq.enc\(aq to encrypted files and \(aq.dec\(aq. to decrypted files
+   
+.P
+
+.br
+ 
+.TP
+.B -o <path>
+ set output path for the the 
+.na
+enc
+.ad n
+.nop and 
+.na
+dec
+.ad n
+.nop commands. Without this certtool.lua will produce output filenames by appending \(aq.enc\(aq to encrypted files and \(aq.dec\(aq. to decrypted files
+   
+.P
+
+.br
+ 
+.TP
+.B -algo <algorithm>
+ encryption algorithm to use for the enc and dec commands (defaults to aes-256-cbc)
+   
+.P
+
+.br
+ 
+.TP
+.B -hash <algorithm>
+ hashing/digest algorithm to use (defaults to sha256)
+   
+.P
+
+.br
+ 
+.TP
+.B -digest <algorithm>
+ hashing/digest algorithm to use (defaults to sha256)
+  
+.SH EXAMPLES
+ 
+.P
+Show certificate details
+.nf
+
+  certtool.lua show ./server.crt
+.fi
+.ad b
+.nop  
+.P
+Connect to service and output its certificate list
+.nf
+
+  certtool.lua scrape myserver:443
+.fi
+.ad b
+.nop  
+.P
+Bundle certificates into cert_bundle.pem
+.nf
+
+  certtool.lua bundle \-out cert_bundle.pem cert1.pem cert2.pem cert3.pem
+.fi
+.ad b
+.nop  
+.P
+Unbundle certificates from cert_bundle.pem into seperate files
+.nf
+
+  certtool.lua unbundle cert_bundle.pem
+.fi
+.ad b
+.nop  
+.P
+Create a certificate authority in interactive mode (asks for needed info)
+.nf
+
+  certtool.lua ca
+.fi
+.ad b
+.nop  
+.P
+Create a certificate authority called \(aqmyCA\(aq with org and email fields set
+.nf
+
+  certtool.lua ca myCA \-org \(aqMy Company\(aq \-email webmaster@my.com
+.fi
+.ad b
+.nop  
+.P
+Create a certificate signing request in interactive mode
+.nf
+
+  certtool.lua csr
+.fi
+.ad b
+.nop  
+.P
+Create a certificate signing request (to be signed by another CA) for a certificate called \(aqserver_cert\(aq
+.nf
+
+  certtool.lua csr server_cert
+.fi
+.ad b
+.nop  
+.P
+Create a certificate in interactive mode
+.nf
+
+  certtool.lua cert
+.fi
+.ad b
+.nop  
+.P
+Create a certificate called \(aqserver_cert\(aq using C.A. \(aqmyCA\(aq
+.nf
+
+  certtool.lua cert server_cert \-ca myCA
+.fi
+.ad b
+.nop  
+.P
+Pack key and certificate into pfx/pkcs12 file
+.nf
+
+  certtool.lua pem2pfx server_cert.pfx server_cert.crt server_cert.key
+.fi
+.ad b
+.nop  
+.P
+Unpack key and certificate from pfx/pkcs12 file
+.nf
+
+  certtool.lua pfx2pem ./server_cert.pfx
+.fi
+.ad b
+.nop   

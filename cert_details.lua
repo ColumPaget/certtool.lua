@@ -36,6 +36,7 @@ details.org=cmd.org
 details.location=cmd.location
 details.email=cmd.email
 details.lifetime=cmd.lifetime
+details.bitswide=cmd.bitswide
 
 return details
 end
