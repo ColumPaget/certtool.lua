@@ -17,7 +17,7 @@ certtool.lua show <path>                                     - show details of c
 certtool.lua bundle <path 1> ... <path n> -out <outpath>     - bundle certificates listed into a single filei at 'outpath'
 certtool.lua unbundle <path>                                 - unbundle certificates out of a single file into a file per certificate
 certtool.lua scrape <hostname>:<port>                        - connect to host and print/check certificates it offers
-certtool.lua pem2pfx <cert> <key>                            - connect to host and print/check certificates it offers
+certtool.lua pem2pfx <cert> <key>                            - convert pem certificate and key files to a single pfx file
 certtool.lua pfx2pem <path>                                  - unpack pfx file at <path> into pem certificate and key files
 certtool.lua ca  <name> <certificate args>                   - create a certificate authority called <name> (if name is ommited ask for fields)
 certtool.lua csr <name> <certificate args>                   - create a signing request for a certificate with common-name <name> (if name is ommited ask for fields)
@@ -25,10 +25,24 @@ certtool.lua cert <name> <certificate args>                  - create a certific
 certtool.lua key <path>                                      - create public key at <path>
 certtool.lua enc <path> <options>                            - encrypt file at <path> with a password
 certtool.lua dec <path> <options>                            - decrypt file at <path> with a password
+certool.lua zerossl:cert <name> <options>                    - create certificate using zerossl
+certool.lua zerossl:list                                     - list zerossl certificates
+certool.lua zerossl:show <id>                                - show details of certificate with hash id <id>
+certool.lua zerossl:info <id>                                - show details of certificate with hash id <id>
+certool.lua zerossl:valid <id>                               - validate a certificate with hash id <id> using 'file' method
+certool.lua zerossl:email <id> -email <dest.email>           - validate certificate with hash id <id> by sending email to 'dest.email'
+certool.lua zerossl:install <id>                             - install certificate with hash id <id>
+certool.lua zerossl:get <id>                                 - get (download) certificate with hash id <id>
+certool.lua zerossl:cancel <id>                              - cancel certificate with hash id <id>
+certool.lua zerossl:revoke <id>                              - revoke certificate with hash id <id>
+certool.lua zerossl:provision                                - create, validate and install a new certificate
 certtool.lua --help                                          - this help
 certtool.lua -help                                           - this help
 certtool.lua -?                                              - this help
 ```
+
+when creating certificates, the path to an alternative working directory can be provided with '-dir <path>'. The working directory contains both certificate authorities and certificates produced with them, each stored in it's own directory.
+
 
 OPTIONS
 =======
@@ -36,8 +50,11 @@ OPTIONS
 -dir <path>
 : path to alternate working directorty to store CAs/certificates in (defaults to ~/.certtool)
 
+-bits <bitsize>
+: keysize in bits when creating certificates/certificate-signing-requests
+
 -days <n>
-: days that certificate will be valid for
+: number of days that certificate will be valid for
 
 -org <org name>
 : organization name of certificate
@@ -55,7 +72,7 @@ OPTIONS
 : organization 2-letter country code of certificate
 
 -email <address>
-: contact email address of certificate
+: contact email address of certificate, or email to send validations to (zerossl)
 
 -ca <C.A. name>
 : name of certificate authority to use when creating certificates
@@ -78,8 +95,23 @@ OPTIONS
 -digest <algorithm>
 : hashing/digest algorithm to use (defaults to sha256)
 
--bits <bitsize>
-: keysize in bits when creating certificates
+-api <key>
+: supply api key for commands (currently zerossl commands) requiring it
+
+
+
+ENCRYPT/DECRYPT
+===============
+
+The 'enc' and 'dec' commands encrypt and decrypt files using a password. If no output path is specified using '-o' or '-out' then they will create an output file whose name is the name of the input file with either '.enc' or '.dec' appended. They will not overwrite an existing file, even if that filename is suplied with '-out'.
+
+
+
+
+ZEROSSL
+=======
+
+The zerossl: commands are somewhat experimental. You must supply your API key using either the -api command-line argument, or by setting an environment variable 'ZEROSSL_API_KEY'. Validation using email has been seen to work, other validation methods are untested
 
 
 EXAMPLES

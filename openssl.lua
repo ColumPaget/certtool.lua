@@ -211,11 +211,11 @@ end
 openssl.mkCSR=function(self, details)
 local subj, csrfile
 
-csrfile=details.name .. ".csr"
+details.finalpath=details.name .. ".csr"
 subj=self:mkSubject(details)
-self:command("openssl req -new -newkey rsa:2048 -nodes -subj '" .. subj .. "' -keyout " .. details.name .. ".key -out " .. csrfile)
+self:command("openssl req -new -newkey rsa:2048 -nodes -subj '" .. subj .. "' -keyout " .. details.name .. ".key -out " .. details.finalpath)
 
-return self:check_files(".", {csrfile}, true)
+return self:check_files(".", {details.finalpath}, true)
 end
 
 
@@ -228,7 +228,7 @@ elseif strutil.strlen(keypath) == 0
 then
 print("ERROR: no path given to keyfile to import")
 else
-self:command("openssl pkcs12 -export -out " .. outpath .. " -inkey " .. keypath .. " -in ".. certpath)
+self:command("openssl pkcs12 -export -out " .. mkoutpath(outpath) .. " -inkey " .. keypath .. " -in ".. certpath)
 end
 end
 
@@ -251,7 +251,7 @@ openssl.encrypt_file=function(self, inpath, outpath, encrypt_details)
 local str
 
 str="openssl enc -a -salt -" .. encrypt_details.enc_algo  .. " -md " .. encrypt_details.md_algo .. " -in ".. inpath
-if strutil.strlen(outpath) and outpath ~= "-" then str=str .. " -out " .. outpath end
+str=str .. " -out " .. outpath
 self:command(str)
 end
 
@@ -260,7 +260,7 @@ openssl.decrypt_file=function(self, inpath, outpath, encrypt_details)
 local str
 
 str="openssl enc -d -a -" .. encrypt_details.enc_algo  .. " -md " .. encrypt_details.md_algo .. " -in ".. inpath
-if strutil.strlen(outpath) and outpath ~= "-" then str=str .. " -out " .. outpath end
+str=str .. " -out " .. outpath
 self:command(str)
 end
 

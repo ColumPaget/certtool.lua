@@ -17,6 +17,7 @@ Out:puts("~rERROR: CA creation failed~0\n")
 ExitStatus=1
 end
 
+return details
 end
 
 
@@ -25,6 +26,8 @@ local details
 
 details=CertDetailsFromCmd(cmd)
 details=ui:askCertDetails(details)
+details.outpath=cmd.outpath
+
 if openssl:mkCSR(details) == true
 then 
 Out:puts("Signing Request for '"..details.name.."' created.\n")
@@ -33,6 +36,7 @@ Out:puts("~rERROR: CSR creation failed~0\n")
 ExitStatus=1
 end
 
+return details
 end
 
 
@@ -250,31 +254,48 @@ end
 end
 
 
-function EncryptFile(Cmd)
+function EncryptSetup(Cmd, path_suffix)
 local details={}
+local outpath
 
-outpath=filesys.basename(Cmd.path) .. ".enc"
+outpath=filesys.basename(Cmd.path) .. path_suffix
 details.enc_algo="aes-256-cbc"
 details.md_algo="sha256"
 
 if strutil.strlen(Cmd.enc_algo) > 0 then details.enc_algo=Cmd.enc_algo end
 if strutil.strlen(Cmd.md_algo) > 0 then details.md_algo=Cmd.md_algo end
-if strutil.strlen(Cmd.outpath) > 0 then outpath=Cmd.outpath end
+
+if strutil.strlen(Cmd.outpath) > 0 
+then 
+  if Cmd.outpath == "-"
+  then
+	Out:puts("~rERROR~0: encryption/decryption data cannot be sent to stdout, sorry.\n")
+	os.exit(1)
+  end
+outpath=Cmd.outpath 
+end
+
+if filesys.exists(outpath) == true
+then
+	Out:puts("~rERROR~0: destination file '"..outpath.."' exists! Will not overwrite!\n")
+	os.exit(1)
+end
+
+return details, outpath
+end
+
+
+function EncryptFile(Cmd)
+local details, outpath
+
+details,outpath=EncryptSetup(Cmd, ".enc")
 openssl:encrypt_file(Cmd.path, outpath, details)
 end
 
 function DecryptFile(Cmd)
-local details={}
-local outpath
+local details, outpath
 
-outpath=filesys.basename(Cmd.path) .. ".dec"
-
-details.enc_algo="aes-256-cbc"
-details.md_algo="sha256"
-
-if strutil.strlen(Cmd.enc_algo) > 0 then details.enc_algo=Cmd.enc_algo end
-if strutil.strlen(Cmd.md_algo) > 0 then details.md_algo=Cmd.md_algo end
-if strutil.strlen(Cmd.outpath) > 0 then outpath=Cmd.outpath end
+details,outpath=EncryptSetup(Cmd, ".dec")
 openssl:decrypt_file(Cmd.path, outpath, details)
 end
 
@@ -283,6 +304,8 @@ end
 WorkingDir=process.getenv("HOME").."/.certtool/"
 --parse command line
 Cmd=ParseCommandLine()
+if strutil.strlen(Cmd.apikey)==0 then Cmd.apikey=process.getenv("ZEROSSL_API_KEY")  end
+
 --make sure working dir ends with a slash. We must do this after ParseCommandLine
 --because command-line args can change WorkingDir
 WorkingDir=filesys.pathaddslash(WorkingDir)
@@ -338,6 +361,39 @@ EncryptFile(Cmd)
 elseif Cmd.action=="dec" or Cmd.action=="decrypt"
 then
 DecryptFile(Cmd)
+elseif Cmd.action=="zerossl:cert"
+then
+zerossl:new_cert(Cmd)
+elseif Cmd.action=="zerossl:list"
+then
+zerossl:list_certs(Cmd)
+elseif Cmd.action=="zerossl:show"
+then
+zerossl:output_cert(Cmd, Cmd.path)
+elseif Cmd.action=="zerossl:info"
+then
+zerossl:output_cert(Cmd, Cmd.path)
+elseif Cmd.action=="zerossl:valid"
+then
+zerossl:validation_file(Cmd, Cmd.path)
+elseif Cmd.action=="zerossl:email"
+then
+zerossl:email_validation(Cmd, Cmd.path)
+elseif Cmd.action=="zerossl:get"
+then
+zerossl:get_certificates(Cmd, Cmd.path)
+elseif Cmd.action=="zerossl:install"
+then
+zerossl:install(Cmd, Cmd.path)
+elseif Cmd.action=="zerossl:provision"
+then
+zerossl:provision(Cmd)
+elseif Cmd.action=="zerossl:cancel"
+then
+zerossl:cancel(Cmd, Cmd.path)
+elseif Cmd.action=="zerossl:revoke"
+then
+zerossl:revoke(Cmd, Cmd.path)
 elseif Cmd.action=="version"
 then
 print("certtool.lua version "..Version)

@@ -41,6 +41,22 @@ outdate=outdate..day
 return outdate, time
 end
 
+function ParseIdentItem(item, ident)
+local toks, tok, key, value
+
+toks=strutil.TOKENIZER(item, "=");
+key=strutil.trim(toks:next())
+value=strutil.trim(toks:remaining())
+
+if key == "C" then ident.country=value
+elseif key == "CN" then ident.name=value
+elseif key == "O" then ident.org=value
+elseif key == "OU" then ident.unit=value
+elseif key == "L" then ident.location=value
+elseif key == "emailAddress=" then ident.email=value
+end
+
+end
 
 
 function ParseIdent(input)
@@ -60,25 +76,7 @@ toks=strutil.TOKENIZER(input, ", ")
 tok=toks:next()
 while tok ~= nil
 do
-	if string.sub(tok, 1, 2) == "C="
-	then
-		ident.country=string.sub(tok,3)
-	elseif string.sub(tok, 1, 3) == "CN="
-	then
-		ident.name=string.sub(tok, 4)
-	elseif string.sub(tok, 1, 2) == "O="
-	then
-		ident.org=string.sub(tok, 3)
-	elseif string.sub(tok, 1, 3) == "OU="
-	then
-		ident.unit=string.sub(tok, 4)
-	elseif string.sub(tok, 1, 2) == "L="
-	then
-		ident.location=string.sub(tok, 3)
-	elseif string.sub(tok, 1, 13) == "emailAddress="
-	then
-		ident.email=string.sub(tok, 14)
-	end
+ParseIdentItem(tok, ident)
 tok=toks:next()
 end
 

@@ -4,10 +4,11 @@ require("filesys")
 require("process")
 require("stream")
 require("time")
+require("dataparser")
 
 
 
-Version="1.3"
+Version="2.0"
 KeyStore={}
 ExitStatus=0
 g_Debug=false
@@ -15,6 +16,21 @@ g_Debug=false
 CARootCerts={}
 CARootURLs="https://letsencrypt.org/certs/isrgrootx1.pem.txt,https://dl.cacerts.digicert.com/BaltimoreCyberTrustRoot.crt.pem,https://dl.cacerts.digicert.com/CybertrustGlobalRoot.crt.pem,DigiCert Assured ID,https://dl.cacerts.digicert.com/DigiCertAssuredIDRootCA.crt.pem,DigiCert Assured ID G2,https://dl.cacerts.digicert.com/DigiCertAssuredIDRootG2.crt.pem,DigiCert Assured ID G3,https://dl.cacerts.digicert.com/DigiCertAssuredIDRootG3.crt.pem,DigiCert Federated ID,https://dl.cacerts.digicert.com/DigiCertFederatedIDRootCA.crt.pem,DigiCert Global,https://dl.cacerts.digicert.com/DigiCertGlobalRootCA.crt.pem,DigiCert Global G2,https://dl.cacerts.digicert.com/DigiCertGlobalRootG2.crt.pem,DigiCert Global G3,https://dl.cacerts.digicert.com/DigiCertGlobalRootG3.crt.pem,DigiCert High Assurance EV,https://dl.cacerts.digicert.com/DigiCertHighAssuranceEVRootCA.crt.pem,DigiCert Trusted G4,https://dl.cacerts.digicert.com/DigiCertTrustedRootG4.crt.pem,GTE Cybetrust Global,https://dl.cacerts.digicert.com/GTECyberTrustGlobalRoot.crt.pem,Verizon Global,https://dl.cacerts.digicert.com/VerizonGlobalRootCA.crt.pem,https://www.geotrust.com/resources/root_certificates/certificates/GeoTrust_Primary_CA.pem,https://www.geotrust.com/resources/root_certificates/certificates/GeoTrust_Primary_CA_G2_ECC.pem,GeoTrust Primary G3,https://www.geotrust.com/resources/root_certificates/certificates/GeoTrust_Primary_CA_G4_DSA.pem,GeoTrust Primary G4,https://www.geotrust.com/resources/root_certificates/certificates/GeoTrust_Primary_CA_G4_DSA.pem,GeoTrust Universal,https://www.geotrust.com/resources/root_certificates/certificates/GeoTrust_Universal_CA.pem,GeoTrust Universal,https://www.geotrust.com/resources/root_certificates/certificates/GeoTrust_Universal_CA.pem,GeoTrust Universal 2,https://www.geotrust.com/resources/root_certificates/certificates/GeoTrust_Universal_CA2.pem,GeoTrust Global,https://www.geotrust.com/resources/root_certificates/certificates/GeoTrust_Universal_CA2.pem,GeoTrust Global 2,https://www.geotrust.com/resources/root_certificates/certificates/GeoTrust_Global_CA2.pem"
 
+
+-- make an outpuath path, potentially relative to 'dir'
+-- if no output path given, or path == "-" then return "-", so data goes to standard out
+-- this function should only be used with data that can be sent to stdout
+function mkoutpath(path, dir)
+if strutil.strlen(path) == 0 then outpath="-"
+elseif path=="-" then outpath=path
+else
+  if strutil.strlen(dir) > 0 then outpath=dir .. "/" .. path
+  else outpath=path
+  end
+end
+
+return outpath
+end
 
 function CertDetailsCreate()
 local details={}
@@ -272,11 +288,11 @@ end
 openssl.mkCSR=function(self, details)
 local subj, csrfile
 
-csrfile=details.name .. ".csr"
+details.finalpath=details.name .. ".csr"
 subj=self:mkSubject(details)
-self:command("openssl req -new -newkey rsa:2048 -nodes -subj '" .. subj .. "' -keyout " .. details.name .. ".key -out " .. csrfile)
+self:command("openssl req -new -newkey rsa:2048 -nodes -subj '" .. subj .. "' -keyout " .. details.name .. ".key -out " .. details.finalpath)
 
-return self:check_files(".", {csrfile}, true)
+return self:check_files(".", {details.finalpath}, true)
 end
 
 
@@ -289,7 +305,7 @@ elseif strutil.strlen(keypath) == 0
 then
 print("ERROR: no path given to keyfile to import")
 else
-self:command("openssl pkcs12 -export -out " .. outpath .. " -inkey " .. keypath .. " -in ".. certpath)
+self:command("openssl pkcs12 -export -out " .. mkoutpath(outpath) .. " -inkey " .. keypath .. " -in ".. certpath)
 end
 end
 
@@ -312,7 +328,7 @@ openssl.encrypt_file=function(self, inpath, outpath, encrypt_details)
 local str
 
 str="openssl enc -a -salt -" .. encrypt_details.enc_algo  .. " -md " .. encrypt_details.md_algo .. " -in ".. inpath
-if strutil.strlen(outpath) and outpath ~= "-" then str=str .. " -out " .. outpath end
+str=str .. " -out " .. outpath
 self:command(str)
 end
 
@@ -321,7 +337,7 @@ openssl.decrypt_file=function(self, inpath, outpath, encrypt_details)
 local str
 
 str="openssl enc -d -a -" .. encrypt_details.enc_algo  .. " -md " .. encrypt_details.md_algo .. " -in ".. inpath
-if strutil.strlen(outpath) and outpath ~= "-" then str=str .. " -out " .. outpath end
+str=str .. " -out " .. outpath
 self:command(str)
 end
 
@@ -449,6 +465,22 @@ outdate=outdate..day
 return outdate, time
 end
 
+function ParseIdentItem(item, ident)
+local toks, tok, key, value
+
+toks=strutil.TOKENIZER(item, "=");
+key=strutil.trim(toks:next())
+value=strutil.trim(toks:remaining())
+
+if key == "C" then ident.country=value
+elseif key == "CN" then ident.name=value
+elseif key == "O" then ident.org=value
+elseif key == "OU" then ident.unit=value
+elseif key == "L" then ident.location=value
+elseif key == "emailAddress=" then ident.email=value
+end
+
+end
 
 
 function ParseIdent(input)
@@ -468,25 +500,7 @@ toks=strutil.TOKENIZER(input, ", ")
 tok=toks:next()
 while tok ~= nil
 do
-	if string.sub(tok, 1, 2) == "C="
-	then
-		ident.country=string.sub(tok,3)
-	elseif string.sub(tok, 1, 3) == "CN="
-	then
-		ident.name=string.sub(tok, 4)
-	elseif string.sub(tok, 1, 2) == "O="
-	then
-		ident.org=string.sub(tok, 3)
-	elseif string.sub(tok, 1, 3) == "OU="
-	then
-		ident.unit=string.sub(tok, 4)
-	elseif string.sub(tok, 1, 2) == "L="
-	then
-		ident.location=string.sub(tok, 3)
-	elseif string.sub(tok, 1, 13) == "emailAddress="
-	then
-		ident.email=string.sub(tok, 14)
-	end
+ParseIdentItem(tok, ident)
 tok=toks:next()
 end
 
@@ -677,7 +691,7 @@ local toks, item, S, certs, path
 
 print(cmd.path)
 
-S=stream.STREAM(cmd.outpath, "w")
+S=stream.STREAM(mkoutpath(cmd.outpath), "w")
 if S ~= nil
 then
 	toks=strutil.TOKENIZER(cmd.path, ",")
@@ -998,7 +1012,7 @@ print("certtool.lua show <path>                                     - show detai
 print("certtool.lua bundle <path 1> ... <path n> -out <outpath>     - bundle certificates listed into a single filei at 'outpath'")
 print("certtool.lua unbundle <path>                                 - unbundle certificates out of a single file into a file per certificate")
 print("certtool.lua scrape <hostname>:<port>                        - connect to host and print/check certificates it offers")
-print("certtool.lua pem2pfx <cert> <key>                            - connect to host and print/check certificates it offers")
+print("certtool.lua pem2pfx <cert> <key>                            - convert pem certificate and key files to a single pfx file")
 print("certtool.lua pfx2pem <path>                                  - unpack pfx file at <path> into pem certificate and key files")
 print("certtool.lua ca  <name> <certificate args>                   - create a certificate authority called <name> (if name is ommited ask for fields)")
 print("certtool.lua csr <name> <certificate args>                   - create a signing request for a certificate with common-name <name> (if name is ommited ask for fields)")
@@ -1006,11 +1020,42 @@ print("certtool.lua cert <name> <certificate args>                  - create a c
 print("certtool.lua key <path>                                      - create public key at <path>")
 print("certtool.lua enc <path> <options>                            - encrypt file at <path> with a password")
 print("certtool.lua dec <path> <options>                            - decrypt file at <path> with a password")
+print("certool.lua zerossl:cert <name> <options>                    - create certificate using zerossl")
+print("certool.lua zerossl:list                                     - list zerossl certificates")
+print("certool.lua zerossl:show <id>                                - show details of certificate with hash id <id>")
+print("certool.lua zerossl:info <id>                                - show details of certificate with hash id <id>")
+print("certool.lua zerossl:valid <id>                               - validate a certificate with hash id <id> using 'file' method")
+print("certool.lua zerossl:email <id> -email <dest.email>           - validate certificate with hash id <id> by sending email to 'dest.email'")
+print("certool.lua zerossl:install <id>                             - install certificate with hash id <id>")
+print("certool.lua zerossl:get <id>                                 - get (download) certificate with hash id <id>")
+print("certool.lua zerossl:cancel <id>                              - cancel certificate with hash id <id>")
+print("certool.lua zerossl:revoke <id>                              - revoke certificate with hash id <id>")
+print("certool.lua zerossl:provision                                - create, validate and install a new certificate")
 print("certtool.lua --help                                          - this help")
 print("certtool.lua -help                                           - this help")
 print("certtool.lua -?                                              - this help")
 print()
 print("when creating certificates, the path to an alternative working directory can be provided with '-dir <path>'. The working directory contains both certificate authorities and certificates produced with them, each stored in it's own directory.");
+print()
+print("The zerossl: commands are somewhat experimental. You must supply your API key using either the -api command-line argument, or by setting an environment variable 'ZEROSSL_API_KEY'. Validation using email has been seen to work, other validation methods are untested")
+print()
+print("OPTIONS")
+print(" -bits <n>                   bitwidth of certificate key, defaults to 2048")
+print(" -days <n>                   days that certificate will be valid for")
+print(" -org  <org name>            organization name")
+print(" -location  <location>       location")
+print(" -loc  <location>            location")
+print(" -country <2-letter code>    2-letter country code")
+print(" -cc <2-letter code>         2-letter country code")
+print(" -email <address>            certificate email, or email to send validations to (zerossl)")
+print(" -ca <C.A. name>             name of certificate authority to use")
+print(" -copy                       copy details from certificate of signing C.A.")
+print(" -api <key>                  supply api key for commands (currently zerossl commands) requiring it")
+print(" -out <path>                 output path for encrypt, decrypt and zerossl:get commands")
+print(" -o <path>                   output path for encrypt, decrypt and zerossl:get commands")
+print(" -algo <algorithm>           encryption algorithm to use for encrypt/decrypt command (defaults to aes-256-cbc)")
+print(" -hash <algorithm>           hashing/digest algorithm to use for encrypt/decrypt command (defaults to sha256)")
+print(" -digest <algorithm>         hashing/digest algorithm to use for encrypt/decrypt command (defaults to sha256)")
 print()
 print("<certificate args> are a set of arguments describing the fields within a certificate, signing request or C.A. If none are specified, and no <name> argument is specified then an interactive query mode will be activated to ask for values. The only field that must have a value is 'name'. If interactive query mode is not desired then arguments can be specified on the command-line using:")
 print()
@@ -1033,6 +1078,7 @@ print(" -algo <algorithm>    encryption algorithm to use (defaults to aes-256-cb
 print(" -hash <algorithm>    hashing/digest algorithm to use (defaults to sha256)")
 print(" -digest <algorithm>  hashing/digest algorithm to use (defaults to sha256)")
 print()
+print("")
 print("Examples:")
 print()
 print("Show certificate details")
@@ -1068,7 +1114,7 @@ local Cmd={}
 local i, item, toks
 
 Cmd.path=""
-Cmd.outpath="-"
+Cmd.outpath=""
 Cmd.mail_errors_to=""
 Cmd.warn_time=665 * 24 * 3600
 Cmd.copy_ca_values=false
@@ -1137,6 +1183,10 @@ then
 	then
 	Cmd.bitswide=arg[i+1]
 	arg[i+1]=""
+	elseif item=="-api"
+	then
+	Cmd.apikey=arg[i+1]
+	arg[i+1]=""
 	elseif item=="-debug"
 	then
 	g_Debug=true
@@ -1172,6 +1222,458 @@ return Cmd
 end
 
 
+zerossl={
+
+
+
+zerossl_output_error=function(self, P)
+local ecode, etype, einfo
+
+if P:value("success") == "1" then Out:puts("~gsuccess~0\n")
+else
+ecode=P:value("error/code") 
+
+etype=P:value("error/type")
+if etype==nil then etype="" end
+if etype=="null" then etype="" end
+
+
+einfo=P:value("error/info")
+if einfo==nil then einfo="" end
+if einfo=="null" then einfo="" end
+
+Out:puts("~rERROR:~0 " .. ecode .. " - " .. etype .. " " .. einfo .. "\n")
+end
+
+end,
+
+
+--handle generic json responses coming back as
+--replies to our API calls
+zerossl_handle_result_json=function(self, json)
+local P
+
+-- {"success":false,"error":{"code":103,"type":"invalid_api_function","info":"This API Function does not exist."}}
+
+print("JSON: " .. str)
+P=dataparser.PARSER("json", str)
+self:zerossl_output_error(P)
+end,
+
+
+csr_read=function(self, path)
+local S 
+local str=""
+
+print("CSR_READ: " .. path)
+S=stream.STREAM(path, "r");
+if S ~= nil
+then
+str=S:readdoc()
+S:close()
+end
+
+str=string.gsub(str, "\n", "\\n")
+return str
+end,
+
+
+-- output details
+output_details=function(self, item)
+local common_name
+
+-- {"id":"d16a8b8adf8e4b9396a603f69a35e205","type":"1","common_name":"mx.columpaget.name","additional_domains":"","created":"2024-05-15 11:35:36","expires":"2024-08-13 00:00:00","status":"draft","validation_type":null,"validation_emails":null,"replacement_for":"","validation":{"email_validation":{"mx.columpaget.name":["admin@mx.columpaget.name","administrator@mx.columpaget.name","hostmaster@mx.columpaget.name","postmaster@mx.columpaget.name","webmaster@mx.columpaget.name","admin@columpaget.name","administrator@columpaget.name","hostmaster@columpaget.name","postmaster@columpaget.name","webmaster@columpaget.name"]},"other_methods":{"mx.columpaget.name":{"file_validation_url_http":"http:\/\/mx.columpaget.name\/.well-known\/pki-validation\/19988E8C931C05FE4EF918E34BAB1B7D.txt","file_validation_url_https":"https:\/\/mx.columpaget.name\/.well-known\/pki-validation\/19988E8C931C05FE4EF918E34BAB1B7D.txt","file_validation_content":["5B33DB2C50B4BB23652B81594CDCF7F2A31F750C83BD727DE4E3A9906540701C","comodoca.com","5eaa5aaeebbea27"],"cname_validation_p1":"_19988E8C931C05FE4EF918E34BAB1B7D.mx.columpaget.name","cname_validation_p2":"5B33DB2C50B4BB23652B81594CDCF7F2.A31F750C83BD727DE4E3A9906540701C.5eaa5aaeebbea27.comodoca.com"}}}}
+
+common_name=item:value("common_name")
+print("ID: ".. item:value("id"))
+print("Common Name: ".. common_name)
+print("Additional Domains: "..item:value("additional_domains"))
+print("Created: "..item:value("created"))
+print("Expires: "..item:value("expires"))
+print("Status: "..item:value("status"))
+print("Validation Emails: " .. self:get_validation_emails(item))
+print("Validation CNAME P1: " .. item:value("validation/other_methods/"..common_name.."/cname_validation_p1"))
+print("Validation CNAME P2: " .. item:value("validation/other_methods/"..common_name.."/cname_validation_p2"))
+print("Validation file url http: " .. item:value("validation/other_methods/"..common_name.."/file_validation_url_http"))
+print("Validation file url https: " .. item:value("validation/other_methods/"..common_name.."/file_validation_url_https"))
+
+end,
+
+
+output_cert=function(self, cmd, req_id)
+local item
+
+item=self:get_certificate_details(cmd, req_id)
+if item == nil then print("ERROR: no such certificate")
+else self:output_details(item)
+end
+end,
+
+
+new_cert=function(self, cmd)
+local csr, str, json, S
+local dir
+
+if strutil.strlen(cmd.apikey) == 0 then print("ERROR: no api key supplied"); return; end
+
+cmd.outpath=WorkingDir .."/zerossl/(name)/"
+csr=CreateCSR(cmd)
+
+print("CSR created at "..csr.finalpath)
+
+json="{ \"certificate_domains\": \"" .. csr.name  .. "\",\n"
+json=json ..  "\"certificate_csr\": \"" .. self:csr_read(csr.finalpath) .. "\""
+json=json.."}"
+
+--print("JS:" .. json)
+
+str="https://api.zerossl.com/certificates?access_key=" .. cmd.apikey
+S=stream.STREAM(str, "w Content-type=application/json Content-length=" .. tostring(strutil.strlen(json)))
+S:writeln(json)
+--print(json)
+S:commit()
+str=S:readdoc()
+P=dataparser.PARSER("json", str)
+self:output_details(P)
+
+if P ~= nil then return(P:value("id")) end
+end,
+
+
+get_certs_list=function(self, cmd)
+local str, S, P
+
+if strutil.strlen(cmd.apikey) == 0 then print("ERROR: no api key supplied"); return; end
+
+str="https://api.zerossl.com/certificates?access_key=" .. cmd.apikey
+S=stream.STREAM(str, "r")
+if S ~= nil
+then
+str=S:readdoc()
+S:close()
+end
+
+P=dataparser.PARSER("json", str)
+return(P)
+end,
+
+
+
+
+list_cert=function(self, item)
+local common_name, str, Now
+local status, expires
+
+Now=time.secs()
+common_name=item:value("common_name")
+status=item:value("status");
+if status == "expired" then status = "~r" .. status .."~0"
+elseif status == "cancelled" then status = "~r" .. status .."~0"
+elseif status == "issued" then status = "~g" .. status .."~0"
+elseif status == "draft" then status = "~b" .. status .."~0"
+elseif status == "pending_validation" then status = "~e" .. status .."~0"
+end
+
+expires=item:value("expires")
+if time.tosecs("%Y/%m/%d %H:%M:%S", expires) < Now then expires="~r" .. expires .. "~0" end
+
+str="~e" .. item:value("id") .. "~0 " .. item:value("created") .. " to " .. expires .. "  ~m" .. common_name .. "~0 " .. status 
+
+
+Out:puts(str.."~0\n")
+end,
+
+
+list_certs=function(self, cmd)
+local P, certs, item, str, common_name, emails
+
+P=self:get_certs_list(cmd)
+if P ~= nil
+then
+certs=P:open("results")
+item=certs:next()
+while item ~= nil
+do
+common_name=item:value("common_name")
+if strutil.strlen(cmd.path) == 0 or common_name == cmd.path then self:list_cert(item) end
+item=certs:next()
+end
+end
+
+end,
+
+
+--saves an array where each member is a line of text
+save_text_array=function(self, fname, contents)
+local S, line
+
+S=stream.STREAM(fname, "w")
+if (S)
+then
+  line=contents:next()
+  while line ~= nil
+  do
+    S:writeln(line:value() .. "\n")
+    line=contents:next()
+  end
+else
+  Out:puts("~rERROR~0: can't open "..fname.." for writing\n")
+end
+
+S:close()
+end,
+
+
+email_validation=function(self, cmd, req_id)
+local P, certs, item, common_name, id, emails, str
+
+if strutil.strlen(cmd.apikey) == 0 then print("ERROR: no api key supplied"); return; end
+if strutil.strlen(cmd.email) == 0 then print("ERROR: no destination email supplied. Use '-email' to indicate email address."); return; end
+
+item=self:get_certificate_details(cmd, req_id)
+common_name=item:value("common_name")
+id=item:value("id")
+emails=item:open("validation/email_validation/"..common_name)
+
+if strutil.strlen(cmd.email) then json="{\"validation_method\": \"EMAIL\", \"validation_email\": \"" .. cmd.email .."\"}";
+else json="{\"validation_method\": \"EMAIL\", \"validation_email\": \"" .. emails:next():value() .."\"}";
+end
+
+str="https://api.zerossl.com/certificates/" .. id .. "/challenges?access_key=" .. cmd.apikey
+S=stream.STREAM(str, "w Content-type=application/json Content-length=" .. tostring(strutil.strlen(json)))
+if S ~= nil
+then
+S:writeln(json)
+S:commit()
+str=S:readdoc()
+P=dataparser.PARSER("json", str)
+if P:value("status") == "pending_validation" then Out:puts("~gOKAY~0: email sent, certificate pending validation\n");
+else self:zerossl_output_error(P)
+end
+S:close()
+end
+
+end,
+
+
+validation_get_file=function(self, item, outpath)
+local validation, common_name, fname, path, str, contents
+
+common_name=item:value("common_name")
+validation=item:open("validation/other_methods/"..common_name)
+
+--contents=validation:open("file_validation_content")
+contents=item:open("validation/other_methods/"..common_name.."/file_validation_content")
+
+fname=filesys.basename(validation:value("file_validation_url_http"))
+
+if strutil.strlen(outpath) == 0 then path=fname
+--elseif filesys.filetype(outpath) == "directory" then path=outpath .."/"..fname
+else path=outpath
+end
+
+self:save_text_array(path, contents)
+
+str="Validation file for: " .. common_name .. " is " .. filesys.basename(path) .. ". This must be made available at: " ..  strutil.unQuote(validation:value("file_validation_url_http")) .. " or " .. strutil.unQuote(validation:value("file_validation_url_https"))
+print(str)
+end,
+
+
+validation_file=function(self, cmd, req_id)
+local P, certs, item, common_name, validation, str
+
+P=self:get_certs_list(cmd)
+certs=P:open("results")
+item=certs:next()
+while item ~= nil
+do
+common_name=item:value("common_name")
+if strutil.strlen(req_id) == 0 or item:value("id") == req_id or common_name == req_id then self:validation_get_file(item, cmd.outpath) end
+item=certs:next()
+end
+
+end,
+
+
+save_certfile=function(self, savename, data)
+local str, S
+
+str=strutil.unQuote(data)
+S=stream.STREAM(savename, "w")
+if S ~= nil
+then
+print("save to: ".. savename)
+S:writeln(str)
+S:close()
+else
+Out:puts("~rERROR~0: failed to open " .. savename .." for writing\n")
+end
+
+end,
+
+
+
+get_certificate_files=function(self, cmd, id, common_name)
+local S, P, str, dir
+
+
+if strutil.strlen(cmd.apikey) == 0 then print("ERROR: no api key supplied"); return; end
+
+if strutil.strlen(cmd.outpath) > 0 then dir=cmd.outpath .."/"
+else dir=""
+end
+
+str="https://api.zerossl.com/certificates/" .. id .. "/download/return?access_key=" .. cmd.apikey
+S=stream.STREAM(str)
+if S ~= nil
+then
+str=S:readdoc()
+P=dataparser.PARSER("json", str)
+S:close()
+end
+
+if P ~= nil
+then
+   if P:value("success") == "false" then self:zerossl_output_error(P)
+   else
+     self:save_certfile(dir .. common_name .. ".crt", P:value("certificate.crt") )
+     self:save_certfile(dir .. common_name .. ".ca", P:value("ca_bundle.crt") )
+
+     str=P:value("certificate.crt") .. "\n" ..  P:value("ca_bundle.crt")
+     self:save_certfile(dir .. common_name .. "-full.crt", str)
+   end
+end
+
+end,
+
+
+get_certificate_details=function(self, cmd, req_id)
+local P, certs, item, common_name
+
+P=self:get_certs_list(cmd)
+certs=P:open("results")
+item=certs:next()
+while item ~= nil
+do
+common_name=item:value("common_name")
+id=item:value("id")
+
+if strutil.strlen(req_id) > 0 and id == req_id then return(item)
+elseif strutil.strlen(cmd.path) == 0 or common_name == cmd.path then return(item) 
+end
+
+item=certs:next()
+end
+
+return(nil)
+end,
+
+
+get_id=function(self, cmd)
+local item
+
+item=self:get_certificate_details(cmd, cmd.path)
+if item ~= nil then return(item:value("id")) end
+return nil
+end,
+
+
+get_validation_emails=function(self, item)
+local emails, em, common_name
+local str=""
+
+common_name=item:value("common_name")
+emails=item:open("validation/email_validation/" .. common_name)
+if emails ~= nil
+then
+em=emails:next()
+while em ~= nil
+do
+str=str .. em:value() .. ","
+em=emails:next()
+end 
+else
+str=str .. item:value("validation_emails")
+end
+
+return(str)
+end,
+
+
+
+
+get_certificates=function(self, cmd)
+local P, certs, item, common_name
+
+-- don't use 'self:get_certificate' because maybe we are pulling more than one!
+P=self:get_certs_list(cmd)
+
+  certs=P:open("results")
+  item=certs:next()
+  while item ~= nil
+  do
+    common_name=item:value("common_name")
+    id=item:value("id")
+    if strutil.strlen(cmd.path) == 0 or id == cmd.path or common_name == cmd.path then self:get_certificate_files(cmd, id, common_name) end
+    item=certs:next()
+  end
+
+end,
+
+
+install=function(self, cmd, req_id)
+local item, common_name, path
+
+item=self:get_certificate_details(cmd, req_id)
+if item ~= nil
+then
+  common_name=item:value("common_name")
+  if strutil.strlen(cmd.outpath) > 0 
+  then 
+    filesys.mkdirPath(cmd.outpath .. "/")
+    self:get_certificate_files(cmd, item:value("id"), common_name)
+    path=WorkingDir .."/zerossl/" .. common_name .. "/" .. common_name .. ".key"
+    filesys.copy(path, cmd.outpath.."/"..common_name .. ".key")
+  end
+end
+end,
+
+
+provision=function(self, cmd)
+local id
+
+id=self:new_cert(cmd)
+self:email_validation(cmd, id)
+self:install(cmd, id)
+end,
+
+
+
+cancel=function(self, cmd, req_id)
+if strutil.strlen(cmd.apikey) == 0 then print("ERROR: no api key supplied"); return; end
+
+
+str="https://api.zerossl.com/certificates/" .. req_id .."/cancel?access_key=" .. cmd.apikey
+S=stream.STREAM(str, "w")
+S:commit()
+str=S:readdoc()
+self:zerossl_handle_result_json(str)
+
+end,
+
+revoke=function(self, cmd)
+if strutil.strlen(cmd.apikey) == 0 then print("ERROR: no api key supplied"); return; end
+
+
+str="https://api.zerossl.com/certificates/".. req_id .."/revoke?access_key=" .. cmd.apikey
+S=stream.STREAM(str, "w")
+S:commit()
+str=S:readdoc()
+self:zerossl_handle_result_json(str)
+
+end
+
+}
 
 
 
@@ -1191,6 +1693,7 @@ Out:puts("~rERROR: CA creation failed~0\n")
 ExitStatus=1
 end
 
+return details
 end
 
 
@@ -1199,6 +1702,8 @@ local details
 
 details=CertDetailsFromCmd(cmd)
 details=ui:askCertDetails(details)
+details.outpath=cmd.outpath
+
 if openssl:mkCSR(details) == true
 then 
 Out:puts("Signing Request for '"..details.name.."' created.\n")
@@ -1207,6 +1712,7 @@ Out:puts("~rERROR: CSR creation failed~0\n")
 ExitStatus=1
 end
 
+return details
 end
 
 
@@ -1424,31 +1930,48 @@ end
 end
 
 
-function EncryptFile(Cmd)
+function EncryptSetup(Cmd, path_suffix)
 local details={}
+local outpath
 
-outpath=filesys.basename(Cmd.path) .. ".enc"
+outpath=filesys.basename(Cmd.path) .. path_suffix
 details.enc_algo="aes-256-cbc"
 details.md_algo="sha256"
 
 if strutil.strlen(Cmd.enc_algo) > 0 then details.enc_algo=Cmd.enc_algo end
 if strutil.strlen(Cmd.md_algo) > 0 then details.md_algo=Cmd.md_algo end
-if strutil.strlen(Cmd.outpath) > 0 then outpath=Cmd.outpath end
+
+if strutil.strlen(Cmd.outpath) > 0 
+then 
+  if Cmd.outpath == "-"
+  then
+	Out:puts("~rERROR~0: encryption/decryption data cannot be sent to stdout, sorry.\n")
+	os.exit(1)
+  end
+outpath=Cmd.outpath 
+end
+
+if filesys.exists(outpath) == true
+then
+	Out:puts("~rERROR~0: destination file '"..outpath.."' exists! Will not overwrite!\n")
+	os.exit(1)
+end
+
+return details, outpath
+end
+
+
+function EncryptFile(Cmd)
+local details, outpath
+
+details,outpath=EncryptSetup(Cmd, ".enc")
 openssl:encrypt_file(Cmd.path, outpath, details)
 end
 
 function DecryptFile(Cmd)
-local details={}
-local outpath
+local details, outpath
 
-outpath=filesys.basename(Cmd.path) .. ".dec"
-
-details.enc_algo="aes-256-cbc"
-details.md_algo="sha256"
-
-if strutil.strlen(Cmd.enc_algo) > 0 then details.enc_algo=Cmd.enc_algo end
-if strutil.strlen(Cmd.md_algo) > 0 then details.md_algo=Cmd.md_algo end
-if strutil.strlen(Cmd.outpath) > 0 then outpath=Cmd.outpath end
+details,outpath=EncryptSetup(Cmd, ".dec")
 openssl:decrypt_file(Cmd.path, outpath, details)
 end
 
@@ -1457,6 +1980,8 @@ end
 WorkingDir=process.getenv("HOME").."/.certtool/"
 --parse command line
 Cmd=ParseCommandLine()
+if strutil.strlen(Cmd.apikey)==0 then Cmd.apikey=process.getenv("ZEROSSL_API_KEY")  end
+
 --make sure working dir ends with a slash. We must do this after ParseCommandLine
 --because command-line args can change WorkingDir
 WorkingDir=filesys.pathaddslash(WorkingDir)
@@ -1512,6 +2037,39 @@ EncryptFile(Cmd)
 elseif Cmd.action=="dec" or Cmd.action=="decrypt"
 then
 DecryptFile(Cmd)
+elseif Cmd.action=="zerossl:cert"
+then
+zerossl:new_cert(Cmd)
+elseif Cmd.action=="zerossl:list"
+then
+zerossl:list_certs(Cmd)
+elseif Cmd.action=="zerossl:show"
+then
+zerossl:output_cert(Cmd, Cmd.path)
+elseif Cmd.action=="zerossl:info"
+then
+zerossl:output_cert(Cmd, Cmd.path)
+elseif Cmd.action=="zerossl:valid"
+then
+zerossl:validation_file(Cmd, Cmd.path)
+elseif Cmd.action=="zerossl:email"
+then
+zerossl:email_validation(Cmd, Cmd.path)
+elseif Cmd.action=="zerossl:get"
+then
+zerossl:get_certificates(Cmd, Cmd.path)
+elseif Cmd.action=="zerossl:install"
+then
+zerossl:install(Cmd, Cmd.path)
+elseif Cmd.action=="zerossl:provision"
+then
+zerossl:provision(Cmd)
+elseif Cmd.action=="zerossl:cancel"
+then
+zerossl:cancel(Cmd, Cmd.path)
+elseif Cmd.action=="zerossl:revoke"
+then
+zerossl:revoke(Cmd, Cmd.path)
 elseif Cmd.action=="version"
 then
 print("certtool.lua version "..Version)

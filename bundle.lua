@@ -19,7 +19,7 @@ local toks, item, S, certs, path
 
 print(cmd.path)
 
-S=stream.STREAM(cmd.outpath, "w")
+S=stream.STREAM(mkoutpath(cmd.outpath), "w")
 if S ~= nil
 then
 	toks=strutil.TOKENIZER(cmd.path, ",")

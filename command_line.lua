@@ -4,7 +4,7 @@ local Cmd={}
 local i, item, toks
 
 Cmd.path=""
-Cmd.outpath="-"
+Cmd.outpath=""
 Cmd.mail_errors_to=""
 Cmd.warn_time=665 * 24 * 3600
 Cmd.copy_ca_values=false
@@ -72,6 +72,10 @@ then
 	elseif item=="-bits"
 	then
 	Cmd.bitswide=arg[i+1]
+	arg[i+1]=""
+	elseif item=="-api"
+	then
+	Cmd.apikey=arg[i+1]
 	arg[i+1]=""
 	elseif item=="-debug"
 	then

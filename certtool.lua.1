@@ -7,13 +7,14 @@ certtool.lua is a lua script that aims to simplify certificate creation/manageme
 .SH USAGE
  
 .nf
+.EX
 
 certtool.lua list <path>                                     \- list certificates in file at <path>
 certtool.lua show <path>                                     \- show details of certificates in file at <path>
 certtool.lua bundle <path 1> ... <path n> \-out <outpath>     \- bundle certificates listed into a single filei at \(aqoutpath\(aq
 certtool.lua unbundle <path>                                 \- unbundle certificates out of a single file into a file per certificate
 certtool.lua scrape <hostname>:<port>                        \- connect to host and print/check certificates it offers
-certtool.lua pem2pfx <cert> <key>                            \- connect to host and print/check certificates it offers
+certtool.lua pem2pfx <cert> <key>                            \- convert pem certificate and key files to a single pfx file
 certtool.lua pfx2pem <path>                                  \- unpack pfx file at <path> into pem certificate and key files
 certtool.lua ca  <name> <certificate args>                   \- create a certificate authority called <name> (if name is ommited ask for fields)
 certtool.lua csr <name> <certificate args>                   \- create a signing request for a certificate with common\-name <name> (if name is ommited ask for fields)
@@ -21,12 +22,27 @@ certtool.lua cert <name> <certificate args>                  \- create a certifi
 certtool.lua key <path>                                      \- create public key at <path>
 certtool.lua enc <path> <options>                            \- encrypt file at <path> with a password
 certtool.lua dec <path> <options>                            \- decrypt file at <path> with a password
+certool.lua zerossl:cert <name> <options>                    \- create certificate using zerossl
+certool.lua zerossl:list                                     \- list zerossl certificates
+certool.lua zerossl:show <id>                                \- show details of certificate with hash id <id>
+certool.lua zerossl:info <id>                                \- show details of certificate with hash id <id>
+certool.lua zerossl:valid <id>                               \- validate a certificate with hash id <id> using \(aqfile\(aq method
+certool.lua zerossl:email <id> \-email <dest.email>           \- validate certificate with hash id <id> by sending email to \(aqdest.email\(aq
+certool.lua zerossl:install <id>                             \- install certificate with hash id <id>
+certool.lua zerossl:get <id>                                 \- get (download) certificate with hash id <id>
+certool.lua zerossl:cancel <id>                              \- cancel certificate with hash id <id>
+certool.lua zerossl:revoke <id>                              \- revoke certificate with hash id <id>
+certool.lua zerossl:provision                                \- create, validate and install a new certificate
 certtool.lua \-\-help                                          \- this help
 certtool.lua \-help                                           \- this help
 certtool.lua \-?                                              \- this help
+.EE
 .fi
+.in
 .ad b
 .nop  
+.P
+when creating certificates, the path to an alternative working directory can be provided with \(aq-dir <path>\(aq. The working directory contains both certificate authorities and certificates produced with them, each stored in it\(aqs own directory.
 .SH OPTIONS
   
 .P
@@ -42,8 +58,16 @@ certtool.lua \-?                                              \- this help
 .br
  
 .TP
+.B -bits <bitsize>
+ keysize in bits when creating certificates/certificate-signing-requests
+   
+.P
+
+.br
+ 
+.TP
 .B -days <n>
- days that certificate will be valid for
+ number of days that certificate will be valid for
    
 .P
 
@@ -91,7 +115,7 @@ certtool.lua \-?                                              \- this help
  
 .TP
 .B -email <address>
- contact email address of certificate
+ contact email address of certificate, or email to send validations to (zerossl)
    
 .P
 
@@ -164,102 +188,154 @@ dec
 .TP
 .B -digest <algorithm>
  hashing/digest algorithm to use (defaults to sha256)
+   
+.P
+
+.br
+ 
+.TP
+.B -api <key>
+ supply api key for commands (currently zerossl commands) requiring it
   
+.SH ENCRYPT/DECRYPT
+ 
+.P
+The \(aqenc\(aq and \(aqdec\(aq commands encrypt and decrypt files using a password. If no output path is specified using \(aq-o\(aq or \(aq-out\(aq then they will create an output file whose name is the name of the input file with either \(aq.enc\(aq or \(aq.dec\(aq appended. They will not overwrite an existing file, even if that filename is suplied with \(aq-out\(aq.
+.SH ZEROSSL
+ 
+.P
+The zerossl: commands are somewhat experimental. You must supply your API key using either the -api command-line argument, or by setting an environment variable \(aqZEROSSL_API_KEY\(aq. Validation using email has been seen to work, other validation methods are untested
 .SH EXAMPLES
  
 .P
 Show certificate details
 .nf
+.EX
 
   certtool.lua show ./server.crt
+.EE
 .fi
+.in
 .ad b
 .nop  
 .P
 Connect to service and output its certificate list
 .nf
+.EX
 
   certtool.lua scrape myserver:443
+.EE
 .fi
+.in
 .ad b
 .nop  
 .P
 Bundle certificates into cert_bundle.pem
 .nf
+.EX
 
   certtool.lua bundle \-out cert_bundle.pem cert1.pem cert2.pem cert3.pem
+.EE
 .fi
+.in
 .ad b
 .nop  
 .P
 Unbundle certificates from cert_bundle.pem into seperate files
 .nf
+.EX
 
   certtool.lua unbundle cert_bundle.pem
+.EE
 .fi
+.in
 .ad b
 .nop  
 .P
 Create a certificate authority in interactive mode (asks for needed info)
 .nf
+.EX
 
   certtool.lua ca
+.EE
 .fi
+.in
 .ad b
 .nop  
 .P
 Create a certificate authority called \(aqmyCA\(aq with org and email fields set
 .nf
+.EX
 
   certtool.lua ca myCA \-org \(aqMy Company\(aq \-email webmaster@my.com
+.EE
 .fi
+.in
 .ad b
 .nop  
 .P
 Create a certificate signing request in interactive mode
 .nf
+.EX
 
   certtool.lua csr
+.EE
 .fi
+.in
 .ad b
 .nop  
 .P
 Create a certificate signing request (to be signed by another CA) for a certificate called \(aqserver_cert\(aq
 .nf
+.EX
 
   certtool.lua csr server_cert
+.EE
 .fi
+.in
 .ad b
 .nop  
 .P
 Create a certificate in interactive mode
 .nf
+.EX
 
   certtool.lua cert
+.EE
 .fi
+.in
 .ad b
 .nop  
 .P
 Create a certificate called \(aqserver_cert\(aq using C.A. \(aqmyCA\(aq
 .nf
+.EX
 
   certtool.lua cert server_cert \-ca myCA
+.EE
 .fi
+.in
 .ad b
 .nop  
 .P
 Pack key and certificate into pfx/pkcs12 file
 .nf
+.EX
 
   certtool.lua pem2pfx server_cert.pfx server_cert.crt server_cert.key
+.EE
 .fi
+.in
 .ad b
 .nop  
 .P
 Unpack key and certificate from pfx/pkcs12 file
 .nf
+.EX
 
   certtool.lua pfx2pem ./server_cert.pfx
+.EE
 .fi
+.in
 .ad b
 .nop   
