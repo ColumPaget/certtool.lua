@@ -1,12 +1,15 @@
-.TH  certtool.lua  1 " 20 March 2024"
+.TH  certtool.lua  1 "20 March 2024"
 
 .SH SYNOPSIS
- 
-.P
+
+.PP
 certtool.lua is a lua script that aims to simplify certificate creation/management and file encryption with openssl.
 .SH USAGE
- 
+
 .nf
+.ft CW
+
+.RS
 .EX
 
 certtool.lua list <path>                                     \- list certificates in file at <path>
@@ -19,6 +22,8 @@ certtool.lua pfx2pem <path>                                  \- unpack pfx file 
 certtool.lua ca  <name> <certificate args>                   \- create a certificate authority called <name> (if name is ommited ask for fields)
 certtool.lua csr <name> <certificate args>                   \- create a signing request for a certificate with common\-name <name> (if name is ommited ask for fields)
 certtool.lua cert <name> <certificate args>                  \- create a certificate with common\-name <name> (if name is ommited ask for fields)
+certtool.lua revoke <path> \-ca <ca name>                     \- revoke certificate in file at <path> that was created by C.A. <ca name>
+certtool.lua crl \-ca <ca name> \-o <path>                     \- create a certificate revocation list at <path> for C.A. <ca name> 
 certtool.lua key <path>                                      \- create public key at <path>
 certtool.lua enc <path> <options>                            \- encrypt file at <path> with a password
 certtool.lua dec <path> <options>                            \- decrypt file at <path> with a password
@@ -36,306 +41,373 @@ certool.lua zerossl:provision                                \- create, validate
 certtool.lua \-\-help                                          \- this help
 certtool.lua \-help                                           \- this help
 certtool.lua \-?                                              \- this help
+.RE
 .EE
 .fi
 .in
 .ad b
 .nop  
-.P
-when creating certificates, the path to an alternative working directory can be provided with \(aq-dir <path>\(aq. The working directory contains both certificate authorities and certificates produced with them, each stored in it\(aqs own directory.
+.PP
+when creating certificates, the path to an alternative working directory can be provided with \(aq-dir <path>'. The working directory contains both certificate authorities and certificates produced with them, each stored in it's own directory.
 .SH OPTIONS
-  
-.P
 
-.br
- 
+.PP
+.in +2
+
 .TP
 .B -dir <path>
- path to alternate working directorty to store CAs/certificates in (defaults to \*(ti/.certtool)
-   
-.P
+path to alternate working directorty to store CAs/certificates in (defaults to ~/.certtool)
+.in
 
-.br
- 
+.PP
+.in +2
+
 .TP
 .B -bits <bitsize>
- keysize in bits when creating certificates/certificate-signing-requests
-   
-.P
+keysize in bits when creating certificates/certificate-signing-requests
+.in
 
-.br
- 
+.PP
+.in +2
+
 .TP
 .B -days <n>
- number of days that certificate will be valid for
-   
-.P
+number of days that certificate will be valid for
+.in
 
-.br
- 
+.PP
+.in +2
+
 .TP
 .B -org <org name>
- organization name of certificate
-   
-.P
+organization name of certificate
+.in
 
-.br
- 
+.PP
+.in +2
+
 .TP
 .B -location  <location>
- organization location of certificate
-   
-.P
+organization location of certificate
+.in
 
-.br
- 
+.PP
+.in +2
+
 .TP
 .B -loc  <location>
- organization location of certificate
-   
-.P
+organization location of certificate
+.in
 
-.br
- 
+.PP
+.in +2
+
 .TP
 .B -country <2-letter code>
- organization 2-letter country code of certificate
-   
-.P
+organization 2-letter country code of certificate
+.in
 
-.br
- 
+.PP
+.in +2
+
 .TP
 .B -cc <2-letter code>
- organization 2-letter country code of certificate
-   
-.P
+organization 2-letter country code of certificate
+.in
 
-.br
- 
+.PP
+.in +2
+
 .TP
 .B -email <address>
- contact email address of certificate, or email to send validations to (zerossl)
-   
-.P
+contact email address of certificate, or email to send validations to (zerossl)
+.in
 
-.br
- 
+.PP
+.in +2
+
 .TP
 .B -ca <C.A. name>
- name of certificate authority to use when creating certificates
-   
-.P
+name of certificate authority to use when creating certificates
+.in
 
-.br
- 
+.PP
+.in +2
+
 .TP
 .B -copy
- copy details (location, email etc) of certificate from signing C.A.
-   
-.P
+copy details (location, email etc) of certificate from signing C.A.
+.in
 
-.br
- 
+.PP
+.in +2
+
 .TP
 .B -out <path>
- set output path for the the 
-.na
-enc
-.ad n
-.nop and 
-.na
-dec
-.ad n
-.nop commands. Without this certtool.lua will produce output filenames by appending \(aq.enc\(aq to encrypted files and \(aq.dec\(aq. to decrypted files
-   
-.P
+set output path for the the `enc` and `dec` commands. Without this certtool.lua will produce output filenames by appending '.enc' to encrypted files and '.dec'. to decrypted files
+.in
 
-.br
- 
+.PP
+.in +2
+
 .TP
 .B -o <path>
- set output path for the the 
-.na
-enc
-.ad n
-.nop and 
-.na
-dec
-.ad n
-.nop commands. Without this certtool.lua will produce output filenames by appending \(aq.enc\(aq to encrypted files and \(aq.dec\(aq. to decrypted files
-   
-.P
+set output path for the the `enc` and `dec` commands. Without this certtool.lua will produce output filenames by appending '.enc' to encrypted files and '.dec'. to decrypted files
+.in
 
-.br
- 
+.PP
+.in +2
+
 .TP
 .B -algo <algorithm>
- encryption algorithm to use for the enc and dec commands (defaults to aes-256-cbc)
-   
-.P
+encryption algorithm to use for the enc and dec commands (defaults to aes-256-cbc)
+.in
 
-.br
- 
+.PP
+.in +2
+
 .TP
 .B -hash <algorithm>
- hashing/digest algorithm to use (defaults to sha256)
-   
-.P
+hashing/digest algorithm to use (defaults to sha256)
+.in
 
-.br
- 
+.PP
+.in +2
+
 .TP
 .B -digest <algorithm>
- hashing/digest algorithm to use (defaults to sha256)
-   
-.P
+hashing/digest algorithm to use (defaults to sha256)
+.in
 
-.br
- 
+.PP
+.in +2
+
 .TP
 .B -api <key>
- supply api key for commands (currently zerossl commands) requiring it
-  
+supply api key for commands (currently zerossl commands) requiring it
+.in
+
 .SH ENCRYPT/DECRYPT
- 
-.P
+
+.PP
 The \(aqenc\(aq and \(aqdec\(aq commands encrypt and decrypt files using a password. If no output path is specified using \(aq-o\(aq or \(aq-out\(aq then they will create an output file whose name is the name of the input file with either \(aq.enc\(aq or \(aq.dec\(aq appended. They will not overwrite an existing file, even if that filename is suplied with \(aq-out\(aq.
+.SH REVOKING CERTIFICATES
+
+.PP
+Certificate revocation is a two-step process. You first revoke the certificate by registering it as revoked against it\(aqs Certificate Authority. This requires specifying the C.A. and supplying the certificate file:
+.nf
+.ft CW
+
+.RS
+.EX
+
+certool.lua revoke /etc/ssl/certs/mycert.crt \-ca myca
+.RE
+.EE
+.fi
+.in
+.ad b
+.nop  
+.PP
+and The certificate is added to the C.A.\(aqs database of revoked certificates. Next a \(aqcertificate revocation list\(aq is created containing all the revoked certificates in the C.A. database
+.nf
+.ft CW
+
+.RS
+.EX
+
+certtool.lua crl \-ca myca \-o /tmp/myca.crl
+.RE
+.EE
+.fi
+.in
+.ad b
+.nop  
+.PP
+\(aqmyca.crl\(aq can then be supplied to programs like openvpn and webservers to notify them of certificates that have been revoked.
 .SH ZEROSSL
- 
-.P
+
+.PP
 The zerossl: commands are somewhat experimental. You must supply your API key using either the -api command-line argument, or by setting an environment variable \(aqZEROSSL_API_KEY\(aq. Validation using email has been seen to work, other validation methods are untested
 .SH EXAMPLES
- 
-.P
+
+.PP
 Show certificate details
 .nf
+.ft CW
+
+.RS
 .EX
 
   certtool.lua show ./server.crt
+.RE
 .EE
 .fi
 .in
 .ad b
 .nop  
-.P
+.PP
 Connect to service and output its certificate list
 .nf
+.ft CW
+
+.RS
 .EX
 
   certtool.lua scrape myserver:443
+.RE
 .EE
 .fi
 .in
 .ad b
 .nop  
-.P
+.PP
 Bundle certificates into cert_bundle.pem
 .nf
+.ft CW
+
+.RS
 .EX
 
   certtool.lua bundle \-out cert_bundle.pem cert1.pem cert2.pem cert3.pem
+.RE
 .EE
 .fi
 .in
 .ad b
 .nop  
-.P
+.PP
 Unbundle certificates from cert_bundle.pem into seperate files
 .nf
+.ft CW
+
+.RS
 .EX
 
   certtool.lua unbundle cert_bundle.pem
+.RE
 .EE
 .fi
 .in
 .ad b
 .nop  
-.P
+.PP
 Create a certificate authority in interactive mode (asks for needed info)
 .nf
+.ft CW
+
+.RS
 .EX
 
   certtool.lua ca
+.RE
 .EE
 .fi
 .in
 .ad b
 .nop  
-.P
+.PP
 Create a certificate authority called \(aqmyCA\(aq with org and email fields set
 .nf
+.ft CW
+
+.RS
 .EX
 
   certtool.lua ca myCA \-org \(aqMy Company\(aq \-email webmaster@my.com
+.RE
 .EE
 .fi
 .in
 .ad b
 .nop  
-.P
+.PP
 Create a certificate signing request in interactive mode
 .nf
+.ft CW
+
+.RS
 .EX
 
   certtool.lua csr
+.RE
 .EE
 .fi
 .in
 .ad b
 .nop  
-.P
+.PP
 Create a certificate signing request (to be signed by another CA) for a certificate called \(aqserver_cert\(aq
 .nf
+.ft CW
+
+.RS
 .EX
 
   certtool.lua csr server_cert
+.RE
 .EE
 .fi
 .in
 .ad b
 .nop  
-.P
+.PP
 Create a certificate in interactive mode
 .nf
+.ft CW
+
+.RS
 .EX
 
   certtool.lua cert
+.RE
 .EE
 .fi
 .in
 .ad b
 .nop  
-.P
+.PP
 Create a certificate called \(aqserver_cert\(aq using C.A. \(aqmyCA\(aq
 .nf
+.ft CW
+
+.RS
 .EX
 
   certtool.lua cert server_cert \-ca myCA
+.RE
 .EE
 .fi
 .in
 .ad b
 .nop  
-.P
+.PP
 Pack key and certificate into pfx/pkcs12 file
 .nf
+.ft CW
+
+.RS
 .EX
 
   certtool.lua pem2pfx server_cert.pfx server_cert.crt server_cert.key
+.RE
 .EE
 .fi
 .in
 .ad b
 .nop  
-.P
+.PP
 Unpack key and certificate from pfx/pkcs12 file
 .nf
+.ft CW
+
+.RS
 .EX
 
   certtool.lua pfx2pem ./server_cert.pfx
+.RE
 .EE
 .fi
 .in
 .ad b
-.nop   
+.nop  

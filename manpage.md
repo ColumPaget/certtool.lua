@@ -22,6 +22,8 @@ certtool.lua pfx2pem <path>                                  - unpack pfx file a
 certtool.lua ca  <name> <certificate args>                   - create a certificate authority called <name> (if name is ommited ask for fields)
 certtool.lua csr <name> <certificate args>                   - create a signing request for a certificate with common-name <name> (if name is ommited ask for fields)
 certtool.lua cert <name> <certificate args>                  - create a certificate with common-name <name> (if name is ommited ask for fields)
+certtool.lua revoke <path> -ca <ca name>                     - revoke certificate in file at <path> that was created by C.A. <ca name>
+certtool.lua crl -ca <ca name> -o <path>                     - create a certificate revocation list at <path> for C.A. <ca name> 
 certtool.lua key <path>                                      - create public key at <path>
 certtool.lua enc <path> <options>                            - encrypt file at <path> with a password
 certtool.lua dec <path> <options>                            - decrypt file at <path> with a password
@@ -105,6 +107,25 @@ ENCRYPT/DECRYPT
 
 The 'enc' and 'dec' commands encrypt and decrypt files using a password. If no output path is specified using '-o' or '-out' then they will create an output file whose name is the name of the input file with either '.enc' or '.dec' appended. They will not overwrite an existing file, even if that filename is suplied with '-out'.
 
+
+
+REVOKING CERTIFICATES
+=====================
+
+Certificate revocation is a two-step process. You first revoke the certificate by registering it as revoked against it's Certificate Authority. This requires specifying the C.A. and supplying the certificate file:
+
+```
+certool.lua revoke /etc/ssl/certs/mycert.crt -ca myca
+```
+
+
+and The certificate is added to the C.A.'s database of revoked certificates. Next a 'certificate revocation list' is created containing all the revoked certificates in the C.A. database
+
+```
+certtool.lua crl -ca myca -o /tmp/myca.crl
+```
+
+'myca.crl' can then be supplied to programs like openvpn and webservers to notify them of certificates that have been revoked.
 
 
 

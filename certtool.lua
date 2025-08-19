@@ -8,7 +8,7 @@ require("dataparser")
 
 
 
-Version="2.0"
+Version="2.1"
 KeyStore={}
 ExitStatus=0
 g_Debug=false
@@ -70,6 +70,7 @@ details.location=cmd.location
 details.email=cmd.email
 details.lifetime=cmd.lifetime
 details.bitswide=cmd.bitswide
+details.outpath=cmd.outpath
 
 return details
 end
@@ -342,10 +343,36 @@ self:command(str)
 end
 
 
+openssl.createCAConfig=function(self, details, path)
+local S
+
+--generate config file for new CA
+S=stream.STREAM(path,"w")
+if S ~= nil
+then
+S:writeln("[ ca ]\ndefault_ca="..details.name.."\n\n")
+S:writeln("[ "..details.name.." ]\n")
+S:writeln("dir="..ca_dir.."\n")
+S:writeln("certs=$dir\n")
+S:writeln("crl_dir=$dir\n")
+S:writeln("new_certs_dir=$dir\n")
+S:writeln("database=$dir/index.txt\n")
+S:writeln("serial=$dir/serial\n")
+S:writeln("private_key=$dir/ca.key\n")
+S:writeln("certificate=$dir/ca.crt\n")
+S:writeln("crlnumber=$dir/crlnumber\n")
+S:writeln("crl=$dir/ca.crl\n")
+S:writeln("default_crl_days=30\n")
+S:writeln("default_md=sha256\n")
+S:close()
+end
+
+end
+
 
 -- make a CA on disk from 'details'
 openssl.mkCA=function(self, details)
-local str, S
+local str, S, ca_dir
 
 if strutil.strlen(details.name) == 0
 then
@@ -354,18 +381,27 @@ then
 end
 
 details.action="mkCA"
-str=WorkingDir .. details.name .. "/"
-filesys.mkdirPath(str)
-process.chdir(str)
+ca_dir=WorkingDir .. details.name .. "/"
+filesys.mkdirPath(ca_dir)
+process.chdir(ca_dir)
 
---initialize serial number (incremented at each operation) to 01
+--initialize serial number (incremented at each operation) to 01. Must have even number of hex digits.
 S=stream.STREAM("serial","w")
 S:writeln("01\n")
 S:close()
 
---just generate this file
+--initialize crl number (incremented at each operation) to 01. Must have even number of hex digits.
+S=stream.STREAM("crlnumber","w")
+S:writeln("01\n")
+S:close()
+
+self:createCAConfig(details, "ca.conf")
+
+--just generate this file, it's a database file that holds a list of created/revoked 
+--certificates. It will be empty to start with
 S=stream.STREAM("index.txt","w")
 S:close()
+
 
 self:command("openssl genrsa -des3 -out ca.key 2048", details)
 str=self:mkSubject(details)
@@ -404,7 +440,9 @@ str="openssl req -new -key ".. keypath .. " -out " .. csrpath .. " -subj \"" .. 
 -- if strutil.strlen(details.alt_names) > 0 then str = str .. " -addext \"subjectAltName=" .. details.alt_names .. "\"" end
 self:command(str)
 
-str="openssl x509 -req -days " .. details.lifetime .. " -in ".. csrpath .. " -CA ca.crt -CAkey ca.key -CAserial serial -out " .. certpath
+str="openssl x509 -req" 
+str=str .. " -days " .. details.lifetime .. " -in ".. csrpath .. " -CA ca.crt -CAkey ca.key -CAserial serial -out " .. certpath
+
 if self:command(str, details) == true
 then
 	--str="openssl rsa -in ".. path .. details.name .. ".key -out ".. path .. details.name .. ".key.insecure"
@@ -417,6 +455,138 @@ end
 
 return false
 end
+
+
+
+
+openssl.generateCRL=function(self, details)
+local str
+local ca_dir, ca_conf, ca_cert, ca_key
+
+ca_dir=WorkingDir .. details.cert_authority .. "/"
+ca_conf=ca_dir.."ca.conf"
+ca_crt=ca_dir.."ca.crt"
+ca_key=ca_dir.."ca.key"
+
+if strutil.strlen(details.outpath) == 0 then  details.outpath=details.cert_authority .. ".crl" end
+
+print("Using CA: ".. ca_dir)
+str="openssl ca -name " .. details.cert_authority .. " -config " .. ca_conf .. " -gencrl -keyfile ".. ca_key .. " -cert " .. ca_crt .. " -out " .. details.outpath
+
+if details.lifetime > 0 then str=str .. " -crldays " ..details.lifetime end
+
+
+print("CMD: " .. str)
+if self:command(str, details) == true
+then
+return true
+end
+
+return false
+
+
+end
+
+
+openssl.CAIndexParse=function(self, line)
+local cert={}
+local toks, tok, str, i, len
+
+toks=strutil.TOKENIZER(line, "\\S")
+cert.state=toks:next()
+toks:next()
+toks:next()
+
+cert.serial=""
+str=toks:next()
+str=string.lower(str)
+len=strutil.strlen(str)
+
+for i = 1,len,2
+do
+if i > 1 then cert.serial=cert.serial .. ":" end
+cert.serial=cert.serial .. string.sub(str, i, i+1)
+end
+
+cert.subject=toks:next()
+
+return cert
+end
+
+
+openssl.certificateIsRevoked=function(self, ca_name, serial)
+local ca_dir, S, str, item
+local result=false
+
+ca_dir=WorkingDir .. ca_name
+
+S=stream.STREAM(ca_dir .. "/index.txt")
+if S ~= nil
+then
+  str=S:readln()
+  while str ~= nil
+  do
+    str=strutil.trim(str)
+    cert=openssl:CAIndexParse(str)
+    if cert.state == "R" and cert.serial == serial 
+    then
+    result=true
+    break
+    end
+    
+    str=S:readln()
+  end
+  S:close()
+end
+
+return result
+end
+
+
+-- revoke a certificate
+openssl.revokeCertificate=function(self, details)
+local str, path, S
+local ca_conf, ca_cert, ca_key, ca_crlnumber
+
+if strutil.strlen(details.name) == 0
+then
+	print("ERROR: No path provided for certificate to revoke.");
+	return
+end
+
+if strutil.strlen(details.cert_authority) == 0
+then
+	print("ERROR: No C.A. name provided. Revocation details are stored against a certificate authority.");
+	return
+end
+
+
+
+path=WorkingDir .. details.cert_authority.."/"
+print("Using CA: "..path)
+
+ca_conf=path.."ca.conf"
+ca_crt=path.."ca.crt"
+ca_key=path.."ca.key"
+ca_crlnumber=path.."crlnumber"
+
+if filesys.exists(ca_conf) ~= true then self:createCAConfig(details, ca_conf) end
+if filesys.exists(ca_crlnumber) ~= true 
+then 
+S=stream.STREAM(ca_crlnumber, "w")
+S:writeln("01\n")
+S:close()
+end
+
+
+if self:command("openssl ca -revoke ".. details.name .. " -config " .. ca_conf) == true
+then
+return true
+end
+
+return false
+end
+
 
 
 
@@ -570,6 +740,10 @@ local str
 		then
 		item=string.gsub(value, "  ", " ")
 		cert.end_date,cert.end_time=ReformatDate(item)
+		elseif item=="Serial Number"
+		then
+		str=S:readln()
+		cert.serial=strutil.trim(str);
 		end
 
 		str=S:readln()
@@ -1018,6 +1192,8 @@ print("certtool.lua ca  <name> <certificate args>                   - create a c
 print("certtool.lua csr <name> <certificate args>                   - create a signing request for a certificate with common-name <name> (if name is ommited ask for fields)")
 print("certtool.lua cert <name> <certificate args>                  - create a certificate with common-name <name> (if name is ommited ask for fields)")
 print("certtool.lua key <path>                                      - create public key at <path>")
+print("certtool.lua revoke <path> -ca <ca name>                     - revoke certificate in file at <path> that was created by C.A. <ca name>")
+print("certtool.lua crl -ca <ca name> -o <path>                     - create a certificate revocation list at <path> for C.A. <ca name>")
 print("certtool.lua enc <path> <options>                            - encrypt file at <path> with a password")
 print("certtool.lua dec <path> <options>                            - decrypt file at <path> with a password")
 print("certool.lua zerossl:cert <name> <options>                    - create certificate using zerossl")
@@ -1036,6 +1212,8 @@ print("certtool.lua -help                                           - this help"
 print("certtool.lua -?                                              - this help")
 print()
 print("when creating certificates, the path to an alternative working directory can be provided with '-dir <path>'. The working directory contains both certificate authorities and certificates produced with them, each stored in it's own directory.");
+print()
+print("revoking certificates is a two-step process. First you revoke the certificate in a C.A.'s database, then you produce a Certificate Revocation List (CRL) of all revoked certificates for a C.A. that you can supply to programs to inform them of revoked certificates.");
 print()
 print("The zerossl: commands are somewhat experimental. You must supply your API key using either the -api command-line argument, or by setting an environment variable 'ZEROSSL_API_KEY'. Validation using email has been seen to work, other validation methods are untested")
 print()
@@ -1744,6 +1922,67 @@ end
 
 
 
+function ExportCRL(cmd)
+local details={}
+local ca_list, item, i, str
+
+details=CertDetailsFromCmd(cmd)
+
+if  details.cert_authority == nil then  local_ca:choose(details) end
+if  details.cert_authority == nil then  return end
+
+if openssl:generateCRL(details) == true 
+then 
+Out:puts("Certificate Revokation List for ".. details.cert_authority.. " created.\n")
+else 
+Out:puts("~rERROR: CRL export failed~0\n")
+ExitStatus=1
+end
+
+
+end
+
+
+function RevokeCertificate(cmd)
+local details={}
+local ca_list, item, i, str, certs, cert
+local revoked=false
+
+details=CertDetailsFromCmd(cmd)
+
+if  details.cert_authority == nil then  local_ca:choose(details) end
+if  details.cert_authority == nil then  return end
+
+
+certs=LoadCertificatesFromFile(details.name)
+
+if #certs > 1
+then
+    Out:puts("~rERROR: file '"..details.name.."' contains more than one certificate~0\n")
+    ExitStatus=1
+else
+  for i,cert in ipairs(certs)
+  do
+  if openssl:certificateIsRevoked(details.cert_authority, cert.serial) == true then revoked=true end
+  end
+  
+  if revoked == true
+  then
+    Out:puts("Certificate '" .. details.name .. "' is already revoked.\n")
+    elseif openssl:revokeCertificate(details) == true 
+    then 
+    Out:puts("Certificate '" .. details.name .. "' revoked.\n")
+    else 
+    Out:puts("~rERROR: Certificate revocation failed~0\n")
+    ExitStatus=1
+  end
+end
+
+end
+
+
+
+
 
 function DisplayCertificateList(certs)
 local cert, i, now, diff
@@ -2025,6 +2264,12 @@ CreateCA(Cmd)
 elseif Cmd.action=="cert"
 then
 CreateCertificate(Cmd)
+elseif Cmd.action=="revoke"
+then
+RevokeCertificate(Cmd)
+elseif Cmd.action=="crl"
+then
+ExportCRL(Cmd)
 elseif Cmd.action=="pem2pfx"
 then
 openssl:PEMtoPKCS12(Cmd.outpath, Cmd.certpath, Cmd.keypath)

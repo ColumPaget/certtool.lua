@@ -265,10 +265,36 @@ self:command(str)
 end
 
 
+openssl.createCAConfig=function(self, details, path)
+local S
+
+--generate config file for new CA
+S=stream.STREAM(path,"w")
+if S ~= nil
+then
+S:writeln("[ ca ]\ndefault_ca="..details.name.."\n\n")
+S:writeln("[ "..details.name.." ]\n")
+S:writeln("dir="..ca_dir.."\n")
+S:writeln("certs=$dir\n")
+S:writeln("crl_dir=$dir\n")
+S:writeln("new_certs_dir=$dir\n")
+S:writeln("database=$dir/index.txt\n")
+S:writeln("serial=$dir/serial\n")
+S:writeln("private_key=$dir/ca.key\n")
+S:writeln("certificate=$dir/ca.crt\n")
+S:writeln("crlnumber=$dir/crlnumber\n")
+S:writeln("crl=$dir/ca.crl\n")
+S:writeln("default_crl_days=30\n")
+S:writeln("default_md=sha256\n")
+S:close()
+end
+
+end
+
 
 -- make a CA on disk from 'details'
 openssl.mkCA=function(self, details)
-local str, S
+local str, S, ca_dir
 
 if strutil.strlen(details.name) == 0
 then
@@ -277,18 +303,27 @@ then
 end
 
 details.action="mkCA"
-str=WorkingDir .. details.name .. "/"
-filesys.mkdirPath(str)
-process.chdir(str)
+ca_dir=WorkingDir .. details.name .. "/"
+filesys.mkdirPath(ca_dir)
+process.chdir(ca_dir)
 
---initialize serial number (incremented at each operation) to 01
+--initialize serial number (incremented at each operation) to 01. Must have even number of hex digits.
 S=stream.STREAM("serial","w")
 S:writeln("01\n")
 S:close()
 
---just generate this file
+--initialize crl number (incremented at each operation) to 01. Must have even number of hex digits.
+S=stream.STREAM("crlnumber","w")
+S:writeln("01\n")
+S:close()
+
+self:createCAConfig(details, "ca.conf")
+
+--just generate this file, it's a database file that holds a list of created/revoked 
+--certificates. It will be empty to start with
 S=stream.STREAM("index.txt","w")
 S:close()
+
 
 self:command("openssl genrsa -des3 -out ca.key 2048", details)
 str=self:mkSubject(details)
@@ -327,7 +362,9 @@ str="openssl req -new -key ".. keypath .. " -out " .. csrpath .. " -subj \"" .. 
 -- if strutil.strlen(details.alt_names) > 0 then str = str .. " -addext \"subjectAltName=" .. details.alt_names .. "\"" end
 self:command(str)
 
-str="openssl x509 -req -days " .. details.lifetime .. " -in ".. csrpath .. " -CA ca.crt -CAkey ca.key -CAserial serial -out " .. certpath
+str="openssl x509 -req" 
+str=str .. " -days " .. details.lifetime .. " -in ".. csrpath .. " -CA ca.crt -CAkey ca.key -CAserial serial -out " .. certpath
+
 if self:command(str, details) == true
 then
 	--str="openssl rsa -in ".. path .. details.name .. ".key -out ".. path .. details.name .. ".key.insecure"
@@ -340,6 +377,138 @@ end
 
 return false
 end
+
+
+
+
+openssl.generateCRL=function(self, details)
+local str
+local ca_dir, ca_conf, ca_cert, ca_key
+
+ca_dir=WorkingDir .. details.cert_authority .. "/"
+ca_conf=ca_dir.."ca.conf"
+ca_crt=ca_dir.."ca.crt"
+ca_key=ca_dir.."ca.key"
+
+if strutil.strlen(details.outpath) == 0 then  details.outpath=details.cert_authority .. ".crl" end
+
+print("Using CA: ".. ca_dir)
+str="openssl ca -name " .. details.cert_authority .. " -config " .. ca_conf .. " -gencrl -keyfile ".. ca_key .. " -cert " .. ca_crt .. " -out " .. details.outpath
+
+if details.lifetime > 0 then str=str .. " -crldays " ..details.lifetime end
+
+
+print("CMD: " .. str)
+if self:command(str, details) == true
+then
+return true
+end
+
+return false
+
+
+end
+
+
+openssl.CAIndexParse=function(self, line)
+local cert={}
+local toks, tok, str, i, len
+
+toks=strutil.TOKENIZER(line, "\\S")
+cert.state=toks:next()
+toks:next()
+toks:next()
+
+cert.serial=""
+str=toks:next()
+str=string.lower(str)
+len=strutil.strlen(str)
+
+for i = 1,len,2
+do
+if i > 1 then cert.serial=cert.serial .. ":" end
+cert.serial=cert.serial .. string.sub(str, i, i+1)
+end
+
+cert.subject=toks:next()
+
+return cert
+end
+
+
+openssl.certificateIsRevoked=function(self, ca_name, serial)
+local ca_dir, S, str, item
+local result=false
+
+ca_dir=WorkingDir .. ca_name
+
+S=stream.STREAM(ca_dir .. "/index.txt")
+if S ~= nil
+then
+  str=S:readln()
+  while str ~= nil
+  do
+    str=strutil.trim(str)
+    cert=openssl:CAIndexParse(str)
+    if cert.state == "R" and cert.serial == serial 
+    then
+    result=true
+    break
+    end
+    
+    str=S:readln()
+  end
+  S:close()
+end
+
+return result
+end
+
+
+-- revoke a certificate
+openssl.revokeCertificate=function(self, details)
+local str, path, S
+local ca_conf, ca_cert, ca_key, ca_crlnumber
+
+if strutil.strlen(details.name) == 0
+then
+	print("ERROR: No path provided for certificate to revoke.");
+	return
+end
+
+if strutil.strlen(details.cert_authority) == 0
+then
+	print("ERROR: No C.A. name provided. Revocation details are stored against a certificate authority.");
+	return
+end
+
+
+
+path=WorkingDir .. details.cert_authority.."/"
+print("Using CA: "..path)
+
+ca_conf=path.."ca.conf"
+ca_crt=path.."ca.crt"
+ca_key=path.."ca.key"
+ca_crlnumber=path.."crlnumber"
+
+if filesys.exists(ca_conf) ~= true then self:createCAConfig(details, ca_conf) end
+if filesys.exists(ca_crlnumber) ~= true 
+then 
+S=stream.STREAM(ca_crlnumber, "w")
+S:writeln("01\n")
+S:close()
+end
+
+
+if self:command("openssl ca -revoke ".. details.name .. " -config " .. ca_conf) == true
+then
+return true
+end
+
+return false
+end
+
 
 
 

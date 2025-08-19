@@ -12,6 +12,8 @@ print("certtool.lua ca  <name> <certificate args>                   - create a c
 print("certtool.lua csr <name> <certificate args>                   - create a signing request for a certificate with common-name <name> (if name is ommited ask for fields)")
 print("certtool.lua cert <name> <certificate args>                  - create a certificate with common-name <name> (if name is ommited ask for fields)")
 print("certtool.lua key <path>                                      - create public key at <path>")
+print("certtool.lua revoke <path> -ca <ca name>                     - revoke certificate in file at <path> that was created by C.A. <ca name>")
+print("certtool.lua crl -ca <ca name> -o <path>                     - create a certificate revocation list at <path> for C.A. <ca name>")
 print("certtool.lua enc <path> <options>                            - encrypt file at <path> with a password")
 print("certtool.lua dec <path> <options>                            - decrypt file at <path> with a password")
 print("certool.lua zerossl:cert <name> <options>                    - create certificate using zerossl")
@@ -30,6 +32,8 @@ print("certtool.lua -help                                           - this help"
 print("certtool.lua -?                                              - this help")
 print()
 print("when creating certificates, the path to an alternative working directory can be provided with '-dir <path>'. The working directory contains both certificate authorities and certificates produced with them, each stored in it's own directory.");
+print()
+print("revoking certificates is a two-step process. First you revoke the certificate in a C.A.'s database, then you produce a Certificate Revocation List (CRL) of all revoked certificates for a C.A. that you can supply to programs to inform them of revoked certificates.");
 print()
 print("The zerossl: commands are somewhat experimental. You must supply your API key using either the -api command-line argument, or by setting an environment variable 'ZEROSSL_API_KEY'. Validation using email has been seen to work, other validation methods are untested")
 print()

@@ -37,6 +37,7 @@ details.location=cmd.location
 details.email=cmd.email
 details.lifetime=cmd.lifetime
 details.bitswide=cmd.bitswide
+details.outpath=cmd.outpath
 
 return details
 end

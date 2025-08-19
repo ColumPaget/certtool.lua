@@ -146,6 +146,10 @@ local str
 		then
 		item=string.gsub(value, "  ", " ")
 		cert.end_date,cert.end_time=ReformatDate(item)
+		elseif item=="Serial Number"
+		then
+		str=S:readln()
+		cert.serial=strutil.trim(str);
 		end
 
 		str=S:readln()

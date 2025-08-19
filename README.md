@@ -32,6 +32,8 @@ certtool.lua pfx2pem <path>                                  - unpack pfx file a
 certtool.lua ca  <name> <certificate args>                   - create a certificate authority called <name> (if name is ommited ask for fields)
 certtool.lua csr <name> <certificate args>                   - create a signing request for a certificate with common-name <name> (if name is ommited ask for fields)
 certtool.lua cert <name> <certificate args>                  - create a certificate with common-name <name> (if name is ommited ask for fields)
+certtool.lua revoke <path> -ca <ca name>                     - revoke certificate in file at <path> that was created by C.A. <ca name>
+certtool.lua crl -ca <ca name> -o <path>                     - create a certificate revocation list at <path> for C.A. <ca name>
 certtool.lua key <path>                                      - create public key at <path>
 certtool.lua enc <path> <options>                            - encrypt file at <path> with a password
 certtool.lua dec <path> <options>                            - decrypt file at <path> with a password

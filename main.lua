@@ -68,6 +68,67 @@ end
 
 
 
+function ExportCRL(cmd)
+local details={}
+local ca_list, item, i, str
+
+details=CertDetailsFromCmd(cmd)
+
+if  details.cert_authority == nil then  local_ca:choose(details) end
+if  details.cert_authority == nil then  return end
+
+if openssl:generateCRL(details) == true 
+then 
+Out:puts("Certificate Revokation List for ".. details.cert_authority.. " created.\n")
+else 
+Out:puts("~rERROR: CRL export failed~0\n")
+ExitStatus=1
+end
+
+
+end
+
+
+function RevokeCertificate(cmd)
+local details={}
+local ca_list, item, i, str, certs, cert
+local revoked=false
+
+details=CertDetailsFromCmd(cmd)
+
+if  details.cert_authority == nil then  local_ca:choose(details) end
+if  details.cert_authority == nil then  return end
+
+
+certs=LoadCertificatesFromFile(details.name)
+
+if #certs > 1
+then
+    Out:puts("~rERROR: file '"..details.name.."' contains more than one certificate~0\n")
+    ExitStatus=1
+else
+  for i,cert in ipairs(certs)
+  do
+  if openssl:certificateIsRevoked(details.cert_authority, cert.serial) == true then revoked=true end
+  end
+  
+  if revoked == true
+  then
+    Out:puts("Certificate '" .. details.name .. "' is already revoked.\n")
+    elseif openssl:revokeCertificate(details) == true 
+    then 
+    Out:puts("Certificate '" .. details.name .. "' revoked.\n")
+    else 
+    Out:puts("~rERROR: Certificate revocation failed~0\n")
+    ExitStatus=1
+  end
+end
+
+end
+
+
+
+
 
 function DisplayCertificateList(certs)
 local cert, i, now, diff
@@ -349,6 +410,12 @@ CreateCA(Cmd)
 elseif Cmd.action=="cert"
 then
 CreateCertificate(Cmd)
+elseif Cmd.action=="revoke"
+then
+RevokeCertificate(Cmd)
+elseif Cmd.action=="crl"
+then
+ExportCRL(Cmd)
 elseif Cmd.action=="pem2pfx"
 then
 openssl:PEMtoPKCS12(Cmd.outpath, Cmd.certpath, Cmd.keypath)
