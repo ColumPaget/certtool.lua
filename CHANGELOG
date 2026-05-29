@@ -1,0 +1,22 @@
+v2.2 (2026-05-29)
+* support certificate revocation lists with 'show' command
+
+v2.1 (2025-08-19)
+* zerossl support, work with recent openssl
+
+v1.4 (2024-03-20)
+* work with openssl, not just libressl. 
+* Add '-bits' option. Add password hints for CA password.
+* 'show' command now supports signing requests as well as certificates
+
+v1.3 (2023-03-15)
+* added -dir option.
+
+v1.2 (2023-01-22)
+* added enc and dec commands
+
+v1.1 (2023-01-21)
+* break program up into modules/units. 
+
+v1.0 (2022-02-18)
+* initial release

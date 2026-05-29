@@ -157,6 +157,45 @@ local str
 
 end
 
+function DecodeCRLContents(cert, S)
+local str
+
+	cert.subject="Revocation List"
+	cert.revokes={}
+
+	S:writeln(cert.pem.."\n")
+	S:commit()
+	str=S:readln()
+
+	while str ~= nil
+	do
+		str=strutil.trim(str)
+		toks=strutil.TOKENIZER(str, ":")
+		item=strutil.trim(toks:next())
+		value=strutil.trim(toks:remaining())
+
+
+		if item=="Issuer"
+		then
+		ParseIssuer(cert, value)
+		elseif item=="Last Update"
+		then
+		item=string.gsub(value, "  ", " ")
+		cert.start_date,cert.start_time=ReformatDate(item)
+		elseif item=="Next Update"
+		then
+		item=string.gsub(value, "  ", " ")
+		cert.end_date,cert.end_time=ReformatDate(item)
+		elseif item=="Serial Number"
+		then
+		table.insert(cert.revokes, value)
+		end
+
+		str=S:readln()
+	end
+
+end
+
 
 function ExaminePEMCertificate(pem)
 local S, str
@@ -190,6 +229,22 @@ return cert
 end
 
 
+function ExaminePEMCRL(pem)
+local S, str
+local cert={}
+
+cert=CertDetailsCreate()
+cert.pem=pem
+cert.type="crl"
+
+S=stream.STREAM("cmd:openssl crl -noout -text", "")
+if S ~= nil then DecodeCRLContents(cert, S) end
+S:close()
+
+return cert
+end
+
+
 
 function LoadCertificatesFromStream(S)
 local str, cert 
@@ -210,6 +265,10 @@ do
 	elseif str=="-----BEGIN_CERTIFICATE REQUEST-----"
 	then
 	pem=str.."\n"
+	elseif str=="-----BEGIN X509 CRL-----"
+	then
+	pem=str.."\n"
+
 	elseif str=="-----END CERTIFICATE-----" 
 	then
 		pem=pem..str.."\n"
@@ -219,6 +278,11 @@ do
 	then
 		pem=pem..str.."\n"
 		cert=ExaminePEMCSR(pem)
+		table.insert(certs, cert)
+	elseif str=="-----END X509 CRL-----"
+	then
+		pem=pem..str.."\n"
+		cert=ExaminePEMCRL(pem)
 		table.insert(certs, cert)
 	else
 	pem=pem..str.."\n"

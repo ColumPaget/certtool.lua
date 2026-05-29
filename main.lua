@@ -191,6 +191,7 @@ if strutil.strlen(cert.pem) ==0 then return nil end
 
 if cert.type=="crt" then S=stream.STREAM("cmd:openssl x509 -text 2>/dev/null", "")
 elseif cert.type=="csr" then S=stream.STREAM("cmd:openssl req -noout -text 2>/dev/null", "")
+elseif cert.type=="crl" then S=stream.STREAM("cmd:openssl crl -noout -text 2>/dev/null", "")
 end
 
 return S

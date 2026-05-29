@@ -8,7 +8,7 @@ require("dataparser")
 
 
 
-Version="2.1"
+Version="2.2"
 KeyStore={}
 ExitStatus=0
 g_Debug=false
@@ -751,6 +751,45 @@ local str
 
 end
 
+function DecodeCRLContents(cert, S)
+local str
+
+	cert.subject="Revocation List"
+	cert.revokes={}
+
+	S:writeln(cert.pem.."\n")
+	S:commit()
+	str=S:readln()
+
+	while str ~= nil
+	do
+		str=strutil.trim(str)
+		toks=strutil.TOKENIZER(str, ":")
+		item=strutil.trim(toks:next())
+		value=strutil.trim(toks:remaining())
+
+
+		if item=="Issuer"
+		then
+		ParseIssuer(cert, value)
+		elseif item=="Last Update"
+		then
+		item=string.gsub(value, "  ", " ")
+		cert.start_date,cert.start_time=ReformatDate(item)
+		elseif item=="Next Update"
+		then
+		item=string.gsub(value, "  ", " ")
+		cert.end_date,cert.end_time=ReformatDate(item)
+		elseif item=="Serial Number"
+		then
+		table.insert(cert.revokes, value)
+		end
+
+		str=S:readln()
+	end
+
+end
+
 
 function ExaminePEMCertificate(pem)
 local S, str
@@ -784,6 +823,22 @@ return cert
 end
 
 
+function ExaminePEMCRL(pem)
+local S, str
+local cert={}
+
+cert=CertDetailsCreate()
+cert.pem=pem
+cert.type="crl"
+
+S=stream.STREAM("cmd:openssl crl -noout -text", "")
+if S ~= nil then DecodeCRLContents(cert, S) end
+S:close()
+
+return cert
+end
+
+
 
 function LoadCertificatesFromStream(S)
 local str, cert 
@@ -804,6 +859,10 @@ do
 	elseif str=="-----BEGIN_CERTIFICATE REQUEST-----"
 	then
 	pem=str.."\n"
+	elseif str=="-----BEGIN X509 CRL-----"
+	then
+	pem=str.."\n"
+
 	elseif str=="-----END CERTIFICATE-----" 
 	then
 		pem=pem..str.."\n"
@@ -813,6 +872,11 @@ do
 	then
 		pem=pem..str.."\n"
 		cert=ExaminePEMCSR(pem)
+		table.insert(certs, cert)
+	elseif str=="-----END X509 CRL-----"
+	then
+		pem=pem..str.."\n"
+		cert=ExaminePEMCRL(pem)
 		table.insert(certs, cert)
 	else
 	pem=pem..str.."\n"
@@ -1182,8 +1246,8 @@ function DrawHelp()
 print("certtool.lua [action] [args]")
 print()
 print("certtool.lua list <path>                                     - list certificates in file at <path>")
-print("certtool.lua show <path>                                     - show details of certificates in file at <path>")
-print("certtool.lua bundle <path 1> ... <path n> -out <outpath>     - bundle certificates listed into a single filei at 'outpath'")
+print("certtool.lua show <path>                                     - show details of certificates, signing requests, or revocation lists in file at <path>")
+print("certtool.lua bundle <path 1> ... <path n> -out <outpath>     - bundle certificates listed into a single file at 'outpath'")
 print("certtool.lua unbundle <path>                                 - unbundle certificates out of a single file into a file per certificate")
 print("certtool.lua scrape <hostname>:<port>                        - connect to host and print/check certificates it offers")
 print("certtool.lua pem2pfx <cert> <key>                            - convert pem certificate and key files to a single pfx file")
@@ -2045,6 +2109,7 @@ if strutil.strlen(cert.pem) ==0 then return nil end
 
 if cert.type=="crt" then S=stream.STREAM("cmd:openssl x509 -text 2>/dev/null", "")
 elseif cert.type=="csr" then S=stream.STREAM("cmd:openssl req -noout -text 2>/dev/null", "")
+elseif cert.type=="crl" then S=stream.STREAM("cmd:openssl crl -noout -text 2>/dev/null", "")
 end
 
 return S
